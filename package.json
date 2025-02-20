@@ -1,0 +1,16 @@
+{
+    "name": "azure-blob-uploader",
+    "version": "1.0.0",
+    "main": "dist/main.js",
+    "scripts": {
+        "start": "tsc && electron .",
+        "build": "tsc"
+    },
+    "devDependencies": {
+        "electron": "^23.0.0",
+        "typescript": "^4.9.5"
+    },
+    "dependencies": {
+        "@azure/storage-blob": "^12.13.0"
+    }
+}

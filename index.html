@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Azure Blob Uploader</title>
+    <style>
+        .container { padding: 20px; font-family: Arial, sans-serif; }
+        .input-group { margin-bottom: 15px; }
+        input, button { padding: 8px; margin: 5px 0; }
+        #results { margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+        .mode-toggle { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Azure Blob Uploader</h2>
+        <div class="input-group">
+            <label>Connection String:</label><br>
+            <input type="text" id="connectionString" style="width: 100%;">
+        </div>
+        <div class="input-group">
+            <label>Container Name:</label><br>
+            <input type="text" id="containerName" style="width: 100%;">
+        </div>
+        <div class="input-group">
+            <div class="mode-toggle">
+                <label><input type="radio" name="mode" value="files" checked> Select Files</label>
+                <label><input type="radio" name="mode" value="folders"> Select Folders</label>
+            </div>
+            <input type="file" id="fileInput" multiple>
+            <button onclick="uploadFiles()">Upload</button>
+        </div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        // Dynamically update file input based on mode
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const fileInput = document.getElementById('fileInput');
+                if (e.target.value === 'folders') {
+                    fileInput.setAttribute('webkitdirectory', '');
+                    fileInput.setAttribute('directory', '');
+                } else {
+                    fileInput.removeAttribute('webkitdirectory');
+                    fileInput.removeAttribute('directory');
+                }
+                fileInput.value = ''; // Reset selection
+            });
+        });
+
+        function uploadFiles() {
+            const connectionString = document.getElementById('connectionString').value;
+            const containerName = document.getElementById('containerName').value;
+            const fileInput = document.getElementById('fileInput');
+            const files = Array.from(fileInput.files).map(file => file.path);
+
+            if (!connectionString || !containerName || files.length === 0) {
+                alert('Please fill all fields and select files or folders');
+                return;
+            }
+
+            document.getElementById('results').innerHTML = 'Uploading...';
+            ipcRenderer.send('upload-files', {
+                connection_string: connectionString,
+                container_name: containerName,
+                files: files
+            });
+        }
+
+        ipcRenderer.on('upload-result', (event, results) => {
+            const resultsDiv = document.getElementById('results');
+            if (results.error) {
+                resultsDiv.innerHTML = `Error: ${results.error}`;
+            } else {
+                resultsDiv.innerHTML = Object.values(results)
+                    .map(result => `<div>${result}</div>`)
+                    .join('');
+            }
+        });
+    </script>
+</body>
+</html>
