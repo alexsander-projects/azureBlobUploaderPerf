@@ -26,51 +26,56 @@
                 <label><input type="radio" name="mode" value="files" checked> Select Files</label>
                 <label><input type="radio" name="mode" value="folders"> Select Folders</label>
             </div>
-            <input type="file" id="fileInput" multiple>
-            <button onclick="uploadFiles()">Upload</button>
+            <button onclick="selectFiles()">Select Files/Folders</button>
+            <button onclick="uploadFiles()" id="uploadButton" disabled>Upload</button>
+            <button onclick="cancelUpload()" id="cancelButton" disabled>Cancel</button>
         </div>
         <div id="results"></div>
     </div>
 
     <script>
         const { ipcRenderer } = require('electron');
+        let selectedFiles = [];
 
-        // Dynamically update file input based on mode
-        document.querySelectorAll('input[name="mode"]').forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                const fileInput = document.getElementById('fileInput');
-                if (e.target.value === 'folders') {
-                    fileInput.setAttribute('webkitdirectory', '');
-                    fileInput.setAttribute('directory', '');
-                } else {
-                    fileInput.removeAttribute('webkitdirectory');
-                    fileInput.removeAttribute('directory');
-                }
-                fileInput.value = ''; // Reset selection
-            });
+        function selectFiles() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            ipcRenderer.send('select-files', mode);
+        }
+
+        ipcRenderer.on('files-selected', (event, files) => {
+            selectedFiles = files;
+            document.getElementById('results').innerHTML = `Selected: ${files.length} items`;
+            document.getElementById('uploadButton').disabled = false;
+            document.getElementById('cancelButton').disabled = true;
         });
 
         function uploadFiles() {
             const connectionString = document.getElementById('connectionString').value;
             const containerName = document.getElementById('containerName').value;
-            const fileInput = document.getElementById('fileInput');
-            const files = Array.from(fileInput.files).map(file => file.path);
 
-            if (!connectionString || !containerName || files.length === 0) {
+            if (!connectionString || !containerName || selectedFiles.length === 0) {
                 alert('Please fill all fields and select files or folders');
                 return;
             }
 
             document.getElementById('results').innerHTML = 'Uploading...';
+            document.getElementById('uploadButton').disabled = true;
+            document.getElementById('cancelButton').disabled = false;
             ipcRenderer.send('upload-files', {
                 connection_string: connectionString,
                 container_name: containerName,
-                files: files
+                files: selectedFiles
             });
+        }
+
+        function cancelUpload() {
+            ipcRenderer.send('cancel-upload');
         }
 
         ipcRenderer.on('upload-result', (event, results) => {
             const resultsDiv = document.getElementById('results');
+            document.getElementById('uploadButton').disabled = false;
+            document.getElementById('cancelButton').disabled = true;
             if (results.error) {
                 resultsDiv.innerHTML = `Error: ${results.error}`;
             } else {

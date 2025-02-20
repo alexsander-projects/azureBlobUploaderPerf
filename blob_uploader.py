@@ -7,14 +7,26 @@ import json
 import os
 import logging
 import unicodedata
+from datetime import datetime
 
 # Force UTF-8 for stdin and stdout
 sys.stdin.reconfigure(encoding='utf-8')
 sys.stdout.reconfigure(encoding='utf-8')
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
+# Log file setup
+log_file = 'upload_log.txt'
+
+
+def log_upload(file_path: str):
+    with open(log_file, 'a', encoding='utf-8') as f:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        f.write(f"{timestamp} - Uploaded: {file_path}\n")
+
+
 def sanitize_blob_name(file_path: str, base_dir: str) -> str:
     relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
+    logging.info(f"Calculated relative path: {relative_path}")
     normalized = unicodedata.normalize('NFC', relative_path)
     try:
         normalized.encode('utf-8')
@@ -27,6 +39,7 @@ def sanitize_blob_name(file_path: str, base_dir: str) -> str:
         logging.info(f"Sanitized blob name (fallback): {safe_name}")
         return safe_name
 
+
 class BlobUploader:
     def __init__(self, connection_string: str, container_name: str, num_threads: int = 4):
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -35,40 +48,69 @@ class BlobUploader:
         self.upload_queue = Queue()
         self.results: Dict[str, str] = {}
         self.lock = threading.Lock()
+        self.cancelled = False
 
-    def upload_file(self, file_path: str) -> Optional[str]:
+    def upload_file(self, file_path: str, base_dir: str) -> Optional[str]:
+        if self.cancelled:
+            return f"Upload cancelled: {file_path}"
         try:
             logging.info(f"Received file path: {file_path}")
-            base_dir = os.path.dirname(file_path)
             blob_name = sanitize_blob_name(file_path, base_dir)
+            full_blob_path = f"{self.container_name}/{blob_name}"
             blob_client = self.blob_service_client.get_blob_client(
                 container=self.container_name,
                 blob=blob_name
             )
-            logging.info(f"Opening file: {file_path}")
+            logging.info(f"Uploading to blob: {full_blob_path}")
             with open(file_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
+            log_upload(file_path)  # Log successful upload
             return f"Successfully uploaded {file_path}"
         except Exception as e:
             return f"Error uploading {file_path}: {str(e)}"
 
     def worker(self):
-        while True:
+        while not self.cancelled:
             try:
-                file_path = self.upload_queue.get_nowait()
+                file_path, base_dir = self.upload_queue.get_nowait()
             except:
                 break
-            result = self.upload_file(file_path)
+            result = self.upload_file(file_path, base_dir)
             with self.lock:
                 self.results[file_path] = result
             self.upload_queue.task_done()
 
     def upload_files(self, file_paths: list) -> Dict[str, str]:
         self.results = {}
-        for file_path in file_paths:
-            self.upload_queue.put(file_path)
+        if not file_paths:
+            return self.results
+
+        if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
+            base_dir = os.path.dirname(file_paths[0])
+        elif len(file_paths) == 1:
+            base_dir = os.path.dirname(os.path.dirname(file_paths[0]))
+        else:
+            common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
+            base_dir = os.path.dirname(common_parent)
+
+        logging.info(f"Base directory: {base_dir}")
+        logging.info(f"Selected paths: {file_paths}")
+
+        all_files = []
+        for path in file_paths:
+            if os.path.isdir(path):
+                for root, _, files in os.walk(path):
+                    for file in files:
+                        full_path = os.path.join(root, file)
+                        all_files.append((full_path, base_dir))
+            else:
+                all_files.append((path, base_dir))
+
+        for file_path, base_dir in all_files:
+            self.upload_queue.put((file_path, base_dir))
+
         threads = []
-        for _ in range(min(self.num_threads, len(file_paths))):
+        for _ in range(min(self.num_threads, len(all_files))):
             t = threading.Thread(target=self.worker)
             t.start()
             threads.append(t)
@@ -76,8 +118,14 @@ class BlobUploader:
             t.join()
         return self.results
 
+    def cancel(self):
+        self.cancelled = True
+        logging.info("Upload cancellation requested")
+
+
 def main():
     try:
+        uploader = None
         raw_input = sys.stdin.readline()
         logging.info(f"Raw input: {raw_input}")
         input_data = json.loads(raw_input)
@@ -86,22 +134,19 @@ def main():
         file_paths = input_data["file_paths"]
         logging.info(f"Parsed file paths: {file_paths}")
 
-        all_files = []
-        for path in file_paths:
-            if os.path.isdir(path):
-                for root, _, files in os.walk(path):
-                    for file in files:
-                        all_files.append(os.path.join(root, file))
-            else:
-                all_files.append(path)
-
         uploader = BlobUploader(connection_string, container_name)
-        results = uploader.upload_files(all_files)
+
+        # Handle termination signal
+        import signal
+        signal.signal(signal.SIGTERM, lambda signum, frame: uploader.cancel())
+
+        results = uploader.upload_files(file_paths)
         print(json.dumps(results, ensure_ascii=False))
         sys.stdout.flush()
     except Exception as e:
         logging.error(f"Main error: {str(e)}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

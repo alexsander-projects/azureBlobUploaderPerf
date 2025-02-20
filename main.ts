@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null;
+let uploadProcess: ChildProcess | null = null;
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -47,7 +48,8 @@ ipcMain.on('select-files', async (event, mode: string) => {
 
 ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[] }) => {
     const pythonScriptPath = path.join(__dirname, '..', 'blob_uploader.py');
-    const pythonProcess = spawn('C:\\Users\\Alexs\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', [pythonScriptPath]);
+    uploadProcess = spawn('C:\\Users\\Alexs\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', [pythonScriptPath]);
+
 
 
     console.log('Sending file paths to Python:', data.files);
@@ -56,27 +58,38 @@ ipcMain.on('upload-files', (event, data: { connection_string: string, container_
         connection_string: data.connection_string,
         container_name: data.container_name,
         file_paths: data.files
-    }) + '\n'; // Add newline to terminate input
+    }) + '\n';
 
     const jsonData = Buffer.from(jsonString, 'utf-8');
-    pythonProcess.stdin.write(jsonData);
-    pythonProcess.stdin.end();
+    uploadProcess.stdin?.write(jsonData);
+    uploadProcess.stdin?.end();
 
     let output = '';
     let errorOutput = '';
-    pythonProcess.stdout.on('data', (chunk) => {
+    uploadProcess.stdout?.on('data', (chunk) => {
         output += chunk;
     });
-    pythonProcess.stderr.on('data', (chunk) => {
+    uploadProcess.stderr?.on('data', (chunk) => {
         errorOutput += chunk;
     });
 
-    pythonProcess.on('close', (code) => {
+    uploadProcess.on('close', (code) => {
         console.log('Python process exited with code:', code);
+        uploadProcess = null;
         if (code === 0) {
             event.reply('upload-result', JSON.parse(output));
         } else {
             event.reply('upload-result', { error: `Upload process failed: ${errorOutput || 'Unknown error'}` });
         }
     });
+});
+
+ipcMain.on('cancel-upload', () => {
+    if (uploadProcess) {
+        uploadProcess.kill('SIGTERM'); // Terminate the Python process
+        uploadProcess = null;
+        if (mainWindow) {
+            mainWindow.webContents.send('upload-result', { error: 'Upload cancelled by user' });
+        }
+    }
 });
