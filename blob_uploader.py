@@ -14,14 +14,17 @@ sys.stdin.reconfigure(encoding='utf-8')
 sys.stdout.reconfigure(encoding='utf-8')
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
-# Log file setup
+# Thread-safe file logging
 log_file = 'upload_log.txt'
+log_lock = threading.Lock()
 
 
 def log_upload(file_path: str):
-    with open(log_file, 'a', encoding='utf-8') as f:
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        f.write(f"{timestamp} - Uploaded: {file_path}\n")
+    with log_lock:  # Ensure thread-safe writes
+        with open(log_file, 'a', encoding='utf-8') as f:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f"{timestamp} - Uploaded: {file_path}\n")
+            f.flush()  # Force write to disk immediately
 
 
 def sanitize_blob_name(file_path: str, base_dir: str) -> str:
@@ -41,9 +44,10 @@ def sanitize_blob_name(file_path: str, base_dir: str) -> str:
 
 
 class BlobUploader:
-    def __init__(self, connection_string: str, container_name: str, num_threads: int = 4):
+    def __init__(self, connection_string: str, container_name: str, access_tier: str, num_threads: int = 4):
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         self.container_name = container_name
+        self.access_tier = access_tier
         self.num_threads = num_threads
         self.upload_queue = Queue()
         self.results: Dict[str, str] = {}
@@ -61,10 +65,12 @@ class BlobUploader:
                 container=self.container_name,
                 blob=blob_name
             )
-            logging.info(f"Uploading to blob: {full_blob_path}")
+            logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
             with open(file_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
-            log_upload(file_path)  # Log successful upload
+                if self.access_tier in ['Hot', 'Cool', 'Cold', 'Archive']:
+                    blob_client.set_standard_blob_tier(self.access_tier)
+            log_upload(file_path)  # Log immediately after upload
             return f"Successfully uploaded {file_path}"
         except Exception as e:
             return f"Error uploading {file_path}: {str(e)}"
@@ -132,11 +138,12 @@ def main():
         connection_string = input_data["connection_string"]
         container_name = input_data["container_name"]
         file_paths = input_data["file_paths"]
+        access_tier = input_data.get("access_tier", "Hot")
         logging.info(f"Parsed file paths: {file_paths}")
+        logging.info(f"Access tier: {access_tier}")
 
-        uploader = BlobUploader(connection_string, container_name)
+        uploader = BlobUploader(connection_string, container_name, access_tier)
 
-        # Handle termination signal
         import signal
         signal.signal(signal.SIGTERM, lambda signum, frame: uploader.cancel())
 

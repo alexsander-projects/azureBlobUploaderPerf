@@ -46,18 +46,17 @@ ipcMain.on('select-files', async (event, mode: string) => {
     }
 });
 
-ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[] }) => {
+ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[], access_tier: string }) => {
     const pythonScriptPath = path.join(__dirname, '..', 'blob_uploader.py');
     uploadProcess = spawn('C:\\Users\\Alexs\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', [pythonScriptPath]);
-
-
 
     console.log('Sending file paths to Python:', data.files);
 
     const jsonString = JSON.stringify({
         connection_string: data.connection_string,
         container_name: data.container_name,
-        file_paths: data.files
+        file_paths: data.files,
+        access_tier: data.access_tier // Add access tier to JSON
     }) + '\n';
 
     const jsonData = Buffer.from(jsonString, 'utf-8');
@@ -86,7 +85,7 @@ ipcMain.on('upload-files', (event, data: { connection_string: string, container_
 
 ipcMain.on('cancel-upload', () => {
     if (uploadProcess) {
-        uploadProcess.kill('SIGTERM'); // Terminate the Python process
+        uploadProcess.kill('SIGTERM');
         uploadProcess = null;
         if (mainWindow) {
             mainWindow.webContents.send('upload-result', { error: 'Upload cancelled by user' });

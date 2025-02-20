@@ -5,7 +5,7 @@
     <style>
         .container { padding: 20px; font-family: Arial, sans-serif; }
         .input-group { margin-bottom: 15px; }
-        input, button { padding: 8px; margin: 5px 0; }
+        input, button, select { padding: 8px; margin: 5px 0; }
         #results { margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
         .mode-toggle { margin: 10px 0; }
     </style>
@@ -20,6 +20,15 @@
         <div class="input-group">
             <label>Container Name:</label><br>
             <input type="text" id="containerName" style="width: 100%;">
+        </div>
+        <div class="input-group">
+            <label>Access Tier:</label><br>
+            <select id="accessTier">
+                <option value="Hot">Hot</option>
+                <option value="Cool">Cool</option>
+                <option value="Cold">Cold</option>
+                <option value="Archive">Archive</option>
+            </select>
         </div>
         <div class="input-group">
             <div class="mode-toggle">
@@ -52,6 +61,7 @@
         function uploadFiles() {
             const connectionString = document.getElementById('connectionString').value;
             const containerName = document.getElementById('containerName').value;
+            const accessTier = document.getElementById('accessTier').value;
 
             if (!connectionString || !containerName || selectedFiles.length === 0) {
                 alert('Please fill all fields and select files or folders');
@@ -64,7 +74,8 @@
             ipcRenderer.send('upload-files', {
                 connection_string: connectionString,
                 container_name: containerName,
-                files: selectedFiles
+                files: selectedFiles,
+                access_tier: accessTier
             });
         }
 
