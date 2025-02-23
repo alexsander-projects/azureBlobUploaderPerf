@@ -16,13 +16,20 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
+- script: |
+    # Check if any files in 'testTrigger/' changed
+    git diff --name-only HEAD^ HEAD | grep '^testTrigger/' && echo "##vso[task.setvariable variable=testTriggerChanged]true" || echo "##vso[task.setvariable variable=testTriggerChanged]false"
+    # Check if any files in 'testTrigger2/' changed
+    git diff --name-only HEAD^ HEAD | grep '^testTrigger2/' && echo "##vso[task.setvariable variable=testTrigger2Changed]true" || echo "##vso[task.setvariable variable=testTrigger2Changed]false"
+  displayName: 'Detect Changed Paths'
+
 - script: echo Hello, world from successful trigger 'testTrigger/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'testTrigger/*'))
+  condition: and(succeeded(), eq(variables['testTriggerChanged'], 'true'))
 
 - script: echo Hello, world from successful trigger 'testTrigger2/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'testTrigger2/*'))
+  condition: and(succeeded(), eq(variables['testTrigger2Changed'], 'true'))
 
 - script: |
     echo Add other tasks to build, test, and deploy your project.
