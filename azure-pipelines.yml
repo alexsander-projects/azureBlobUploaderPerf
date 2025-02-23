@@ -4,7 +4,13 @@
 # https://aka.ms/yaml
 
 trigger:
-- main
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'testTrigger/*'
+
 
 pool:
   vmImage: ubuntu-latest
@@ -12,8 +18,6 @@ pool:
 steps:
 - script: echo Hello, world!
   displayName: 'Run a one-line script'
-  condition: 
-  workingDirectory: 'testTrigger/**'
 
 - script: |
     echo Add other tasks to build, test, and deploy your project.
