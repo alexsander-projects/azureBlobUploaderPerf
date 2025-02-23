@@ -16,30 +16,14 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-  step1:
-  script: echo Hello, world from successful trigger 'testTrigger/*'!
+- script: echo Hello, world from successful trigger 'testTrigger/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'testTrigger/*'))
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger'))
 
-# copy above step and change the condition to test the trigger
-
-#- script: echo Hello, world from successful trigger 'testTrigger2/*'!
-#  displayName: 'Run a one-line script'
-#  condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'testTrigger2/*'))
-#
-#- script: |
-#    echo Add other tasks to build, test, and deploy your project.
-#    echo See https://aka.ms/yaml
-#  displayName: 'Run a multi-line script'
-
-# every script above in a different step pls
-
-step2:
 - script: echo Hello, world from successful trigger 'testTrigger2/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'testTrigger2/*'))
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger2'))
 
-step3:
 - script: |
     echo Add other tasks to build, test, and deploy your project.
     echo See https://aka.ms/yaml
