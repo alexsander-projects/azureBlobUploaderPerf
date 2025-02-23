@@ -17,18 +17,27 @@ pool:
 
 steps:
 - script: |
-    # Check if any files in 'testTrigger/' changed
-    git diff --name-only HEAD^ HEAD | grep '^testTrigger/' && echo "##vso[task.setvariable variable=testTriggerChanged]true" || echo "##vso[task.setvariable variable=testTriggerChanged]false"
-    # Check if any files in 'testTrigger2/' changed
-    git diff --name-only HEAD^ HEAD | grep '^testTrigger2/' && echo "##vso[task.setvariable variable=testTrigger2Changed]true" || echo "##vso[task.setvariable variable=testTrigger2Changed]false"
+    # Ensure we have enough history (fetch the main branch)
+    git fetch --depth=2 origin main || echo "Shallow fetch failed, proceeding anyway"
+    
+    # Check if there’s a parent commit; if not, list all files as "changed"
+    if git rev-parse HEAD^ >/dev/null 2>&1; then
+      # Compare with parent commit if it exists
+      git diff --name-only HEAD^ HEAD | grep '^testTrigger/' && echo "##vso[task.setvariable variable=testTriggerChanged]true" || echo "##vso[task.setvariable variable=testTriggerChanged]false"
+      git diff --name-only HEAD^ HEAD | grep '^testTrigger2/' && echo "##vso[task.setvariable variable=testTrigger2Changed]true" || echo "##vso[task.setvariable variable=testTrigger2Changed]false"
+    else
+      # If no parent (e.g., first commit), check current files
+      git ls-files | grep '^testTrigger/' && echo "##vso[task.setvariable variable=testTriggerChanged]true" || echo "##vso[task.setvariable variable=testTriggerChanged]false"
+      git ls-files | grep '^testTrigger2/' && echo "##vso[task.setvariable variable=testTrigger2Changed]true" || echo "##vso[task.setvariable variable=testTrigger2Changed]false"
+    fi
   displayName: 'Detect Changed Paths'
 
 - script: echo Hello, world from successful trigger 'testTrigger/*'!
-  displayName: 'Run a one-line script'
+  displayName: 'Run a one-line script for testTrigger'
   condition: and(succeeded(), eq(variables['testTriggerChanged'], 'true'))
 
 - script: echo Hello, world from successful trigger 'testTrigger2/*'!
-  displayName: 'Run a one-line script'
+  displayName: 'Run a one-line script for testTrigger2'
   condition: and(succeeded(), eq(variables['testTrigger2Changed'], 'true'))
 
 - script: |
