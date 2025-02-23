@@ -22,7 +22,7 @@ steps:
 
 # copy above step and change the condition to test the trigger
 
-- script: echo Hello, world from unsuccessful trigger 'testTrigger2/*'!
+- script: echo Hello, world from successful trigger 'testTrigger2/*'!
   displayName: 'Run a one-line script'
   condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'testTrigger2/*'))
 
