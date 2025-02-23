@@ -18,11 +18,11 @@ pool:
 steps:
 - script: echo Hello, world from successful trigger 'testTrigger/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger'))
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger/*'))
 
 - script: echo Hello, world from successful trigger 'testTrigger2/*'!
   displayName: 'Run a one-line script'
-  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger2'))
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/heads/testTrigger2/*'))
 
 - script: |
     echo Add other tasks to build, test, and deploy your project.
