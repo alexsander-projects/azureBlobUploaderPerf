@@ -15,13 +15,23 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -35,6 +45,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path = __importStar(require("path"));
 const child_process_1 = require("child_process");
+const fs = __importStar(require("fs"));
 let mainWindow;
 let uploadProcess = null;
 function createWindow() {
@@ -42,67 +53,93 @@ function createWindow() {
         width: 800,
         height: 600,
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
         }
     });
     mainWindow.loadFile('index.html');
 }
 electron_1.app.whenReady().then(createWindow);
 electron_1.app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    if (process.platform !== 'darwin')
         electron_1.app.quit();
-    }
 });
 electron_1.app.on('activate', () => {
-    if (electron_1.BrowserWindow.getAllWindows().length === 0) {
+    if (electron_1.BrowserWindow.getAllWindows().length === 0)
         createWindow();
-    }
 });
-electron_1.ipcMain.on('select-files', (event, mode) => __awaiter(void 0, void 0, void 0, function* () {
+electron_1.ipcMain.handle('select-files', (event, mode) => __awaiter(void 0, void 0, void 0, function* () {
     if (!mainWindow)
-        return;
+        return [];
     const options = {
         properties: mode === 'folders' ? ['openDirectory', 'multiSelections'] : ['openFile', 'multiSelections']
     };
     const result = yield electron_1.dialog.showOpenDialog(mainWindow, options);
-    if (!result.canceled) {
-        console.log('Selected paths:', result.filePaths);
-        event.reply('files-selected', result.filePaths);
-    }
+    return result.canceled ? [] : result.filePaths;
 }));
-electron_1.ipcMain.on('upload-files', (event, data) => {
-    var _a, _b, _c, _d;
-    // path to Python script
-    const pythonScriptPath = electron_1.app.isPackaged
-        ? path.join(process.resourcesPath, 'blob_uploader.py') : path.join(__dirname, 'blob_uploader.py');
-    uploadProcess = (0, child_process_1.spawn)('C:\\Users\\Alexs\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', [pythonScriptPath]);
-    console.log('Sending file paths to Python:', data.files);
-    const jsonString = JSON.stringify({
+electron_1.ipcMain.handle('upload-files', (event, data) => {
+    const uploaderPath = electron_1.app.isPackaged
+        ? path.join(process.resourcesPath, 'blob_uploader.exe')
+        : path.join(__dirname, '..', 'blob_uploader.exe');
+    console.log('Attempting to spawn:', uploaderPath);
+    if (!fs.existsSync(uploaderPath)) {
+        console.error('File does not exist at:', uploaderPath);
+        throw new Error(`Uploader executable not found at: ${uploaderPath}`);
+    }
+    uploadProcess = (0, child_process_1.spawn)(uploaderPath, [], { windowsHide: true });
+    uploadProcess.on('error', (err) => {
+        console.error('Spawn error:', err);
+        if (mainWindow)
+            mainWindow.webContents.send('upload-result', { error: `Spawn failed: ${err.message}` });
+    });
+    console.log('Starting upload process with', data.files.length, 'files');
+    const jsonData = {
         connection_string: data.connection_string,
         container_name: data.container_name,
-        file_paths: data.files,
-        access_tier: data.access_tier // Add access tier to JSON
-    }) + '\n';
-    const jsonData = Buffer.from(jsonString, 'utf-8');
-    (_a = uploadProcess.stdin) === null || _a === void 0 ? void 0 : _a.write(jsonData);
-    (_b = uploadProcess.stdin) === null || _b === void 0 ? void 0 : _b.end();
-    let output = '';
-    let errorOutput = '';
-    (_c = uploadProcess.stdout) === null || _c === void 0 ? void 0 : _c.on('data', (chunk) => {
-        output += chunk;
-    });
-    (_d = uploadProcess.stderr) === null || _d === void 0 ? void 0 : _d.on('data', (chunk) => {
-        errorOutput += chunk;
-    });
-    uploadProcess.on('close', (code) => {
-        console.log('Python process exited with code:', code);
-        uploadProcess = null;
-        if (code === 0) {
-            event.reply('upload-result', JSON.parse(output));
+        file_paths: data.files, // Changed from "files"
+        access_tier: data.access_tier
+    };
+    console.log('Input data:', JSON.stringify(jsonData, null, 2));
+    const jsonString = JSON.stringify(jsonData) + '\n';
+    if (!uploadProcess.stdin) {
+        throw new Error('Failed to start upload process');
+    }
+    uploadProcess.stdin.write(jsonString);
+    uploadProcess.stdin.end();
+    return new Promise((resolve) => {
+        var _a, _b;
+        if (uploadProcess) {
+            let output = '';
+            let errorOutput = '';
+            (_a = uploadProcess.stdout) === null || _a === void 0 ? void 0 : _a.on('data', (chunk) => {
+                output += chunk;
+                console.log('stdout:', chunk.toString());
+            });
+            (_b = uploadProcess.stderr) === null || _b === void 0 ? void 0 : _b.on('data', (chunk) => {
+                errorOutput += chunk;
+                console.log('stderr:', chunk.toString());
+            });
+            uploadProcess.on('close', (code) => {
+                console.log('Process exited with code:', code);
+                console.log('Final output:', output || 'No output');
+                console.log('Final error output:', errorOutput || 'No error output');
+                uploadProcess = null;
+                if (code === 0 && output) {
+                    try {
+                        resolve(JSON.parse(output));
+                    }
+                    catch (e) {
+                        resolve({ error: `Invalid output from uploader: ${e.message}` });
+                    }
+                }
+                else {
+                    resolve({ error: `Upload failed: ${errorOutput || 'Unknown error'} (Exit code: ${code})` });
+                }
+            });
         }
         else {
-            event.reply('upload-result', { error: `Upload process failed: ${errorOutput || 'Unknown error'}` });
+            resolve({ error: 'Upload process not initialized' });
         }
     });
 });
@@ -110,8 +147,7 @@ electron_1.ipcMain.on('cancel-upload', () => {
     if (uploadProcess) {
         uploadProcess.kill('SIGTERM');
         uploadProcess = null;
-        if (mainWindow) {
-            mainWindow.webContents.send('upload-result', { error: 'Upload cancelled by user' });
-        }
+        if (mainWindow)
+            mainWindow.webContents.send('upload-result', { error: 'Upload cancelled' });
     }
 });

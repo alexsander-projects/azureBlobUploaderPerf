@@ -18,14 +18,12 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 log_file = 'upload_log.txt'
 log_lock = threading.Lock()
 
-
 def log_upload(file_path: str):
-    with log_lock:  # Ensure thread-safe writes
+    with log_lock:
         with open(log_file, 'a', encoding='utf-8') as f:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write(f"{timestamp} - Uploaded: {file_path}\n")
-            f.flush()  # Force write to disk immediately
-
+            f.flush()
 
 def sanitize_blob_name(file_path: str, base_dir: str) -> str:
     relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
@@ -41,7 +39,6 @@ def sanitize_blob_name(file_path: str, base_dir: str) -> str:
         safe_name = ''.join(c if c not in '<>:"|?*' else '_' for c in safe_name)
         logging.info(f"Sanitized blob name (fallback): {safe_name}")
         return safe_name
-
 
 class BlobUploader:
     def __init__(self, connection_string: str, container_name: str, access_tier: str, num_threads: int = 4):
@@ -61,16 +58,13 @@ class BlobUploader:
             logging.info(f"Received file path: {file_path}")
             blob_name = sanitize_blob_name(file_path, base_dir)
             full_blob_path = f"{self.container_name}/{blob_name}"
-            blob_client = self.blob_service_client.get_blob_client(
-                container=self.container_name,
-                blob=blob_name
-            )
+            blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
             logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
             with open(file_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
                 if self.access_tier in ['Hot', 'Cool', 'Cold', 'Archive']:
                     blob_client.set_standard_blob_tier(self.access_tier)
-            log_upload(file_path)  # Log immediately after upload
+            log_upload(file_path)
             return f"Successfully uploaded {file_path}"
         except Exception as e:
             return f"Error uploading {file_path}: {str(e)}"
@@ -128,13 +122,16 @@ class BlobUploader:
         self.cancelled = True
         logging.info("Upload cancellation requested")
 
-
 def main():
     try:
-        uploader = None
-        raw_input = sys.stdin.readline()
-        logging.info(f"Raw input: {raw_input}")
+        logging.info("Starting main function")
+        raw_input = sys.stdin.read()  # Changed to read() to capture full input
+        logging.info(f"Raw input received: {raw_input}")
+        if not raw_input:
+            logging.error("No input received from stdin")
+            sys.exit(1)
         input_data = json.loads(raw_input)
+        logging.info(f"Parsed input: {json.dumps(input_data, ensure_ascii=False)}")
         connection_string = input_data["connection_string"]
         container_name = input_data["container_name"]
         file_paths = input_data["file_paths"]
@@ -148,14 +145,17 @@ def main():
         signal.signal(signal.SIGTERM, lambda signum, frame: uploader.cancel())
 
         results = uploader.upload_files(file_paths)
+        if any("Error uploading" in result for result in results.values()):
+            logging.error("Upload errors detected")
+            print(json.dumps(results, ensure_ascii=False))
+            sys.stdout.flush()
+            sys.exit(1)
+        logging.info("Upload completed successfully")
         print(json.dumps(results, ensure_ascii=False))
         sys.stdout.flush()
     except Exception as e:
         logging.error(f"Main error: {str(e)}")
         sys.exit(1)
 
-
 if __name__ == "__main__":
     main()
-
-# test trigger 3

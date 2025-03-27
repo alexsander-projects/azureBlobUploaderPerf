@@ -6,7 +6,9 @@
         "rootDir": "./",
         "strict": true,
         "esModuleInterop": true,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "incremental": true,
+        "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
     },
     "include": ["*.ts"],
     "exclude": ["node_modules", "dist"]

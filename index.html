@@ -43,20 +43,17 @@
     </div>
 
     <script>
-        const { ipcRenderer } = require('electron');
         let selectedFiles = [];
 
         function selectFiles() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
-            ipcRenderer.send('select-files', mode);
+            window.electronAPI.selectFiles(mode).then(files => {
+                selectedFiles = files;
+                document.getElementById('results').innerHTML = `Selected: ${files.length} items`;
+                document.getElementById('uploadButton').disabled = false;
+                document.getElementById('cancelButton').disabled = true;
+            });
         }
-
-        ipcRenderer.on('files-selected', (event, files) => {
-            selectedFiles = files;
-            document.getElementById('results').innerHTML = `Selected: ${files.length} items`;
-            document.getElementById('uploadButton').disabled = false;
-            document.getElementById('cancelButton').disabled = true;
-        });
 
         function uploadFiles() {
             const connectionString = document.getElementById('connectionString').value;
@@ -71,7 +68,7 @@
             document.getElementById('results').innerHTML = 'Uploading...';
             document.getElementById('uploadButton').disabled = true;
             document.getElementById('cancelButton').disabled = false;
-            ipcRenderer.send('upload-files', {
+            window.electronAPI.uploadFiles({
                 connection_string: connectionString,
                 container_name: containerName,
                 files: selectedFiles,
@@ -80,10 +77,10 @@
         }
 
         function cancelUpload() {
-            ipcRenderer.send('cancel-upload');
+            window.electronAPI.cancelUpload();
         }
 
-        ipcRenderer.on('upload-result', (event, results) => {
+        window.electronAPI.onUploadResult((results) => {
             const resultsDiv = document.getElementById('results');
             document.getElementById('uploadButton').disabled = false;
             document.getElementById('cancelButton').disabled = true;

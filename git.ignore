@@ -1,4 +1,3 @@
-# all useless files
 *.log
 build
 node_modules
@@ -9,3 +8,5 @@ dist/builder-debug.yml
 dist/builder-effective-config.yaml
 dist/latest.yml
 .idea
+*.ts
+tsconfig.json
