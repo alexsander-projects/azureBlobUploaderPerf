@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.example.azureblobuploader",
     "win": {
-      "target": "portable"
+      "target": "nsis"
     },
     "files": [
       "dist/**/*",

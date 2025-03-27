@@ -38,7 +38,8 @@ ipcMain.handle('select-files', async (event, mode: string) => {
     return result.canceled ? [] : result.filePaths;
 });
 
-ipcMain.handle('upload-files', (event, data: { connection_string: string, container_name: string, files: string[], access_tier: string }) => {
+// Change from ipcMain.handle to ipcMain.on since frontend uses send
+ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[], access_tier: string }) => {
     const uploaderPath = app.isPackaged
         ? path.join(process.resourcesPath, 'blob_uploader.exe')
         : path.join(__dirname, '..', 'blob_uploader.exe');
@@ -47,7 +48,8 @@ ipcMain.handle('upload-files', (event, data: { connection_string: string, contai
 
     if (!fs.existsSync(uploaderPath)) {
         console.error('File does not exist at:', uploaderPath);
-        throw new Error(`Uploader executable not found at: ${uploaderPath}`);
+        if (mainWindow) mainWindow.webContents.send('upload-result', { error: `Uploader executable not found at: ${uploaderPath}` });
+        return;
     }
 
     uploadProcess = spawn(uploaderPath, [], { windowsHide: true });
@@ -62,7 +64,7 @@ ipcMain.handle('upload-files', (event, data: { connection_string: string, contai
     const jsonData = {
         connection_string: data.connection_string,
         container_name: data.container_name,
-        file_paths: data.files,  // Changed from "files"
+        file_paths: data.files,
         access_tier: data.access_tier
     };
     console.log('Input data:', JSON.stringify(jsonData, null, 2));
@@ -70,42 +72,40 @@ ipcMain.handle('upload-files', (event, data: { connection_string: string, contai
     const jsonString = JSON.stringify(jsonData) + '\n';
 
     if (!uploadProcess.stdin) {
-        throw new Error('Failed to start upload process');
+        if (mainWindow) mainWindow.webContents.send('upload-result', { error: 'Failed to start upload process' });
+        return;
     }
     uploadProcess.stdin.write(jsonString);
     uploadProcess.stdin.end();
 
-    return new Promise((resolve) => {
-        if (uploadProcess) {
-            let output = '';
-            let errorOutput = '';
+    let output = '';
+    let errorOutput = '';
 
-            uploadProcess.stdout?.on('data', (chunk) => {
-                output += chunk;
-                console.log('stdout:', chunk.toString());
-            });
-            uploadProcess.stderr?.on('data', (chunk) => {
-                errorOutput += chunk;
-                console.log('stderr:', chunk.toString());
-            });
+    uploadProcess.stdout?.on('data', (chunk) => {
+        output += chunk;
+        console.log('stdout:', chunk.toString());
+    });
+    uploadProcess.stderr?.on('data', (chunk) => {
+        errorOutput += chunk;
+        console.log('stderr:', chunk.toString());
+    });
 
-            uploadProcess.on('close', (code) => {
-                console.log('Process exited with code:', code);
-                console.log('Final output:', output || 'No output');
-                console.log('Final error output:', errorOutput || 'No error output');
-                uploadProcess = null;
-                if (code === 0 && output) {
-                    try {
-                        resolve(JSON.parse(output));
-                    } catch (e: any) {
-                        resolve({ error: `Invalid output from uploader: ${e.message}` });
-                    }
-                } else {
-                    resolve({ error: `Upload failed: ${errorOutput || 'Unknown error'} (Exit code: ${code})` });
+    uploadProcess.on('close', (code) => {
+        console.log('Process exited with code:', code);
+        console.log('Final output:', output || 'No output');
+        console.log('Final error output:', errorOutput || 'No error output');
+        uploadProcess = null;
+        if (mainWindow) {
+            if (code === 0 && output) {
+                try {
+                    const result = JSON.parse(output);
+                    mainWindow.webContents.send('upload-result', result);
+                } catch (e: any) {
+                    mainWindow.webContents.send('upload-result', { error: `Invalid output from uploader: ${e.message}` });
                 }
-            });
-        } else {
-            resolve({ error: 'Upload process not initialized' });
+            } else {
+                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${errorOutput || 'Unknown error'} (Exit code: ${code})` });
+            }
         }
     });
 });
