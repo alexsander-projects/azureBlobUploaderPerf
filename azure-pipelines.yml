@@ -12,7 +12,6 @@ trigger:
       - 'testTrigger/*'
       - 'testTrigger2/*'
 
-
 pool:
   vmImage: ubuntu-latest
 

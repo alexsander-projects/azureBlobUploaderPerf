@@ -47,7 +47,9 @@ ipcMain.on('select-files', async (event, mode: string) => {
 });
 
 ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[], access_tier: string }) => {
-    const pythonScriptPath = path.join(__dirname, '..', 'blob_uploader.py');
+    // path to Python script
+    const pythonScriptPath = app.isPackaged
+    ?path.join(process.resourcesPath, 'blob_uploader.py'):path.join(__dirname, 'blob_uploader.py');
     uploadProcess = spawn('C:\\Users\\Alexs\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', [pythonScriptPath]);
 
     console.log('Sending file paths to Python:', data.files);

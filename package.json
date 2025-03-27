@@ -1,14 +1,38 @@
 {
     "name": "azure-blob-uploader",
-    "version": "1.0.0",
+    "version": "0.0.1",
     "main": "dist/main.js",
     "scripts": {
         "start": "tsc && electron .",
-        "build": "tsc"
+        "build": "tsc",
+        "pack": "electron-builder --win --x64"
+    },
+    "build": {
+        "appId": "com.example.app",
+        "productName": "Azure Blob Uploader",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "dist/**/*",
+            "resources/**/*",
+            "index.html"
+        ],
+        "extraResources": [
+            {
+                "from": "blob_uploader.py",
+                "to": "blob_uploader.py"
+            }
+        ],
+        "asar": true,
+        "win": {
+            "target": "portable"
+        }
     },
     "devDependencies": {
-        "electron": "^23.0.0",
-        "typescript": "^4.9.5"
+        "electron": "27.0.0-beta.8",
+        "typescript": "^4.9.5",
+        "electron-builder": "^26.0.12"
     },
     "dependencies": {
         "@azure/storage-blob": "^12.13.0"
