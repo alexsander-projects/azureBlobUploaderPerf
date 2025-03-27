@@ -6,23 +6,29 @@
         .container { padding: 20px; font-family: Arial, sans-serif; }
         .input-group { margin-bottom: 15px; }
         input, button, select { padding: 8px; margin: 5px 0; }
-        #results { margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+        #results { margin-top: 20px; padding: 10px; }
         .mode-toggle { margin: 10px 0; }
+        .progress-container { width: 100%; background: #f0f0f0; border-radius: 5px; margin-top: 10px; }
+        #progress-bar { height: 20px; background: #4caf50; width: 0%; transition: width 0.3s; border-radius: 5px; }
+        #progress-text { margin-top: 5px; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Azure Blob Uploader</h2>
         <div class="input-group">
-            <label>Connection String:</label><br>
+            <label>Connection String:</label>
+
             <input type="text" id="connectionString" style="width: 100%;">
         </div>
         <div class="input-group">
-            <label>Container Name:</label><br>
+            <label>Container Name:</label>
+
             <input type="text" id="containerName" style="width: 100%;">
         </div>
         <div class="input-group">
-            <label>Access Tier:</label><br>
+            <label>Access Tier:</label>
+
             <select id="accessTier">
                 <option value="Hot">Hot</option>
                 <option value="Cool">Cool</option>
@@ -39,59 +45,79 @@
             <button onclick="uploadFiles()" id="uploadButton" disabled>Upload</button>
             <button onclick="cancelUpload()" id="cancelButton" disabled>Cancel</button>
         </div>
-        <div id="results"></div>
+        <div id="results">
+            <div id="status-text"></div>
+            <div class="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+            <div id="progress-text"></div>
+        </div>
     </div>
 
-    <script>
-        let selectedFiles = [];
+<script>
+    let selectedFiles = [];
+    const statusText = document.getElementById('status-text');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
 
-        function selectFiles() {
-            const mode = document.querySelector('input[name="mode"]:checked').value;
-            window.electronAPI.selectFiles(mode).then(files => {
-                selectedFiles = files;
-                document.getElementById('results').innerHTML = `Selected: ${files.length} items`;
-                document.getElementById('uploadButton').disabled = false;
-                document.getElementById('cancelButton').disabled = true;
-            });
-        }
-
-        function uploadFiles() {
-            const connectionString = document.getElementById('connectionString').value;
-            const containerName = document.getElementById('containerName').value;
-            const accessTier = document.getElementById('accessTier').value;
-
-            if (!connectionString || !containerName || selectedFiles.length === 0) {
-                alert('Please fill all fields and select files or folders');
-                return;
-            }
-
-            document.getElementById('results').innerHTML = 'Uploading...';
-            document.getElementById('uploadButton').disabled = true;
-            document.getElementById('cancelButton').disabled = false;
-            window.electronAPI.uploadFiles({
-                connection_string: connectionString,
-                container_name: containerName,
-                files: selectedFiles,
-                access_tier: accessTier
-            });
-        }
-
-        function cancelUpload() {
-            window.electronAPI.cancelUpload();
-        }
-
-        window.electronAPI.onUploadResult((results) => {
-            const resultsDiv = document.getElementById('results');
+    function selectFiles() {
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        window.electronAPI.selectFiles(mode).then(files => {
+            selectedFiles = files;
+            statusText.innerHTML = `Selected: ${files.length} items`;
+            progressBar.style.width = '0%';
+            progressText.innerHTML = '';
             document.getElementById('uploadButton').disabled = false;
             document.getElementById('cancelButton').disabled = true;
-            if (results.error) {
-                resultsDiv.innerHTML = `Error: ${results.error}`;
-            } else {
-                resultsDiv.innerHTML = Object.values(results)
-                    .map(result => `<div>${result}</div>`)
-                    .join('');
-            }
         });
-    </script>
+    }
+
+    function uploadFiles() {
+        const connectionString = document.getElementById('connectionString').value;
+        const containerName = document.getElementById('containerName').value;
+        const accessTier = document.getElementById('accessTier').value;
+
+        if (!connectionString || !containerName || selectedFiles.length === 0) {
+            alert('Please fill all fields and select files or folders');
+            return;
+        }
+
+        statusText.innerHTML = 'Uploading...';
+        progressBar.style.width = '0%';
+        progressText.innerHTML = '0%';
+        document.getElementById('uploadButton').disabled = true;
+        document.getElementById('cancelButton').disabled = false;
+        window.electronAPI.uploadFiles({
+            connection_string: connectionString,
+            container_name: containerName,
+            files: selectedFiles,
+            access_tier: accessTier
+        });
+    }
+
+    function cancelUpload() {
+        window.electronAPI.cancelUpload();
+    }
+
+    window.electronAPI.onUploadProgress((progress) => {
+        progressBar.style.width = `${progress.progress}%`;
+        progressText.innerHTML = `${progress.progress}% (${progress.completedFiles}/${progress.totalFiles})`;
+    });
+
+    window.electronAPI.onUploadResult((results) => {
+        document.getElementById('uploadButton').disabled = false;
+        document.getElementById('cancelButton').disabled = true;
+        if (results.error) {
+            statusText.innerHTML = `Error: ${results.error}`;
+            progressBar.style.background = '#f44336'; // Red for error
+            progressText.innerHTML = '';
+        } else {
+            progressBar.style.width = '100%';
+            statusText.innerHTML = 'Upload completed!';
+            progressText.innerHTML = '100%';
+        }
+    });
+</script>
+
 </body>
 </html>

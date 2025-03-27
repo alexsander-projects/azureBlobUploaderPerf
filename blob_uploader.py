@@ -106,6 +106,9 @@ class BlobUploader:
             else:
                 all_files.append((path, base_dir))
 
+        # log all files to be uploaded
+        logging.info(f"Total files to upload: {len(all_files)}")
+
         for file_path, base_dir in all_files:
             self.upload_queue.put((file_path, base_dir))
 

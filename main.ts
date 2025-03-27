@@ -3,7 +3,7 @@ import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 
-let mainWindow: BrowserWindow | null;
+let mainWindow: BrowserWindow | null = null;
 let uploadProcess: ChildProcess | null = null;
 
 function createWindow() {
@@ -17,6 +17,10 @@ function createWindow() {
         }
     });
     mainWindow.loadFile('index.html');
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
 }
 
 app.whenReady().then(createWindow);
@@ -29,7 +33,7 @@ app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-ipcMain.handle('select-files', async (event, mode: string) => {
+ipcMain.handle('select-files', async (event, mode: string): Promise<string[]> => {
     if (!mainWindow) return [];
     const options: Electron.OpenDialogOptions = {
         properties: mode === 'folders' ? ['openDirectory', 'multiSelections'] : ['openFile', 'multiSelections']
@@ -38,8 +42,14 @@ ipcMain.handle('select-files', async (event, mode: string) => {
     return result.canceled ? [] : result.filePaths;
 });
 
-// Change from ipcMain.handle to ipcMain.on since frontend uses send
-ipcMain.on('upload-files', (event, data: { connection_string: string, container_name: string, files: string[], access_tier: string }) => {
+interface UploadData {
+    connection_string: string;
+    container_name: string;
+    files: string[];
+    access_tier: string;
+}
+
+ipcMain.on('upload-files', (event, data: UploadData) => {
     const uploaderPath = app.isPackaged
         ? path.join(process.resourcesPath, 'blob_uploader.exe')
         : path.join(__dirname, '..', 'blob_uploader.exe');
@@ -52,7 +62,11 @@ ipcMain.on('upload-files', (event, data: { connection_string: string, container_
         return;
     }
 
-    uploadProcess = spawn(uploaderPath, [], { windowsHide: true });
+    // Spawn with unbuffered output
+    uploadProcess = spawn(uploaderPath, [], {
+        windowsHide: true,
+        env: { ...process.env, PYTHONUNBUFFERED: '1' } // Ensure stdout/stderr isn’t buffered
+    });
 
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
@@ -78,33 +92,48 @@ ipcMain.on('upload-files', (event, data: { connection_string: string, container_
     uploadProcess.stdin.write(jsonString);
     uploadProcess.stdin.end();
 
-    let output = '';
-    let errorOutput = '';
+    let stdoutOutput = '';
+    let stderrOutput = '';
+    let completedFiles = 0;
+    const totalFiles = data.files.length;
 
-    uploadProcess.stdout?.on('data', (chunk) => {
-        output += chunk;
-        console.log('stdout:', chunk.toString());
-    });
+    // Listen to stderr for Azure SDK logs (requests and responses)
     uploadProcess.stderr?.on('data', (chunk) => {
-        errorOutput += chunk;
-        console.log('stderr:', chunk.toString());
+        stderrOutput += chunk.toString();
+        console.log('stderr chunk:', stderrOutput);
+
+        // Process line-by-line for successful responses
+        const lines = stderrOutput.split('\n');
+        for (const line of lines) {
+            if (line.includes("Response status: 200") || line.includes("Response status: 201")) {
+                completedFiles++;
+                const progress = Math.min(Math.round((completedFiles / totalFiles) * 100), 100);
+                console.log(`Progress update: ${progress}% (${completedFiles}/${totalFiles})`);
+                if (mainWindow) {
+                    mainWindow.webContents.send('upload-progress', { progress, totalFiles, completedFiles });
+                }
+            }
+        }
+        // Retain incomplete line
+        stderrOutput = lines[lines.length - 1] || '';
+    });
+
+    // Still listen to stdout for final result
+    uploadProcess.stdout?.on('data', (chunk) => {
+        stdoutOutput += chunk.toString();
+        console.log('stdout chunk:', stdoutOutput);
     });
 
     uploadProcess.on('close', (code) => {
         console.log('Process exited with code:', code);
-        console.log('Final output:', output || 'No output');
-        console.log('Final error output:', errorOutput || 'No error output');
+        console.log('Final stdout:', stdoutOutput || 'No output');
+        console.log('Final stderr:', stderrOutput || 'No error output');
         uploadProcess = null;
         if (mainWindow) {
-            if (code === 0 && output) {
-                try {
-                    const result = JSON.parse(output);
-                    mainWindow.webContents.send('upload-result', result);
-                } catch (e: any) {
-                    mainWindow.webContents.send('upload-result', { error: `Invalid output from uploader: ${e.message}` });
-                }
+            if (code === 0) {
+                mainWindow.webContents.send('upload-result', { success: true });
             } else {
-                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${errorOutput || 'Unknown error'} (Exit code: ${code})` });
+                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${stderrOutput || 'Unknown error'} (Exit code: ${code})` });
             }
         }
     });

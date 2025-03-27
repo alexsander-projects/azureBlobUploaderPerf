@@ -46,7 +46,7 @@ const electron_1 = require("electron");
 const path = __importStar(require("path"));
 const child_process_1 = require("child_process");
 const fs = __importStar(require("fs"));
-let mainWindow;
+let mainWindow = null;
 let uploadProcess = null;
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
@@ -59,6 +59,9 @@ function createWindow() {
         }
     });
     mainWindow.loadFile('index.html');
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
 }
 electron_1.app.whenReady().then(createWindow);
 electron_1.app.on('window-all-closed', () => {
@@ -78,7 +81,6 @@ electron_1.ipcMain.handle('select-files', (event, mode) => __awaiter(void 0, voi
     const result = yield electron_1.dialog.showOpenDialog(mainWindow, options);
     return result.canceled ? [] : result.filePaths;
 }));
-// Change from ipcMain.handle to ipcMain.on since frontend uses send
 electron_1.ipcMain.on('upload-files', (event, data) => {
     var _a, _b;
     const uploaderPath = electron_1.app.isPackaged
@@ -91,7 +93,10 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
             mainWindow.webContents.send('upload-result', { error: `Uploader executable not found at: ${uploaderPath}` });
         return;
     }
-    uploadProcess = (0, child_process_1.spawn)(uploaderPath, [], { windowsHide: true });
+    uploadProcess = (0, child_process_1.spawn)(uploaderPath, [], {
+        windowsHide: true,
+        env: Object.assign(Object.assign({}, process.env), { PYTHONUNBUFFERED: '1' })
+    });
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
         if (mainWindow)
@@ -113,33 +118,50 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
     }
     uploadProcess.stdin.write(jsonString);
     uploadProcess.stdin.end();
-    let output = '';
-    let errorOutput = '';
-    (_a = uploadProcess.stdout) === null || _a === void 0 ? void 0 : _a.on('data', (chunk) => {
-        output += chunk;
-        console.log('stdout:', chunk.toString());
+    let stdoutOutput = '';
+    let stderrOutput = '';
+    let completedFiles = 0;
+    let totalFiles = 0; // Initialize as 0, to be set from backend
+    (_a = uploadProcess.stderr) === null || _a === void 0 ? void 0 : _a.on('data', (chunk) => {
+        stderrOutput += chunk.toString();
+        console.log('stderr chunk:', stderrOutput);
+        const lines = stderrOutput.split('\n');
+        for (const line of lines) {
+            // Extract total files from the backend
+            const totalMatch = line.match(/TOTAL_FILES: (\d+)/);
+            if (totalMatch) {
+                totalFiles = parseInt(totalMatch[1], 10);
+                console.log(`Set totalFiles to: ${totalFiles}`);
+            }
+            // Update progress on successful uploads
+            if (line.includes("Response status: 200") || line.includes("Response status: 201")) {
+                completedFiles++;
+                if (totalFiles > 0) { // Ensure totalFiles is set before calculating
+                    const progress = Math.min(Math.round((completedFiles / totalFiles) * 100), 100);
+                    console.log(`Progress update: ${progress}% (${completedFiles}/${totalFiles})`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('upload-progress', { progress, totalFiles, completedFiles });
+                    }
+                }
+            }
+        }
+        stderrOutput = lines[lines.length - 1] || '';
     });
-    (_b = uploadProcess.stderr) === null || _b === void 0 ? void 0 : _b.on('data', (chunk) => {
-        errorOutput += chunk;
-        console.log('stderr:', chunk.toString());
+    (_b = uploadProcess.stdout) === null || _b === void 0 ? void 0 : _b.on('data', (chunk) => {
+        stdoutOutput += chunk.toString();
+        console.log('stdout chunk:', stdoutOutput);
     });
     uploadProcess.on('close', (code) => {
         console.log('Process exited with code:', code);
-        console.log('Final output:', output || 'No output');
-        console.log('Final error output:', errorOutput || 'No error output');
+        console.log('Final stdout:', stdoutOutput || 'No output');
+        console.log('Final stderr:', stderrOutput || 'No error output');
         uploadProcess = null;
         if (mainWindow) {
-            if (code === 0 && output) {
-                try {
-                    const result = JSON.parse(output);
-                    mainWindow.webContents.send('upload-result', result);
-                }
-                catch (e) {
-                    mainWindow.webContents.send('upload-result', { error: `Invalid output from uploader: ${e.message}` });
-                }
+            if (code === 0) {
+                mainWindow.webContents.send('upload-result', { success: true });
             }
             else {
-                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${errorOutput || 'Unknown error'} (Exit code: ${code})` });
+                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${stderrOutput || 'Unknown error'} (Exit code: ${code})` });
             }
         }
     });
