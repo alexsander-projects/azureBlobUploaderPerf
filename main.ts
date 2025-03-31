@@ -6,6 +6,7 @@ import * as fs from 'fs';
 let mainWindow: BrowserWindow | null = null;
 let uploadProcess: ChildProcess | null = null;
 
+// Create the main window
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 800,
@@ -16,13 +17,14 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js')
         }
     });
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile('index.html').then(() => console.log('Loaded index.html')).catch(console.error);
 
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
 
+// Initialize the app
 app.whenReady().then(createWindow).catch(console.error);
 
 app.on('window-all-closed', () => {
@@ -33,7 +35,8 @@ app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-ipcMain.handle('select-files', async (event, mode: string): Promise<string[]> => {
+// Handle IPC messages
+ipcMain.handle('select-files', async (_event, mode: string): Promise<string[]> => {
     if (!mainWindow) return [];
     const options: Electron.OpenDialogOptions = {
         properties: mode === 'folders' ? ['openDirectory', 'multiSelections'] : ['openFile', 'multiSelections']
@@ -42,6 +45,7 @@ ipcMain.handle('select-files', async (event, mode: string): Promise<string[]> =>
     return result.canceled ? [] : result.filePaths;
 });
 
+// Data structure for uploading files
 interface UploadData {
     connection_string: string;
     container_name: string;
@@ -49,7 +53,8 @@ interface UploadData {
     access_tier: string;
 }
 
-ipcMain.on('upload-files', (event, data: UploadData) => {
+// Handle file upload request from renderer process
+ipcMain.on('upload-files', (_event, data: UploadData) => {
     const uploaderPath = app.isPackaged
         ? path.join(process.resourcesPath, 'blob_uploader.exe')
         : path.join(__dirname, '..', 'blob_uploader.exe');
@@ -68,6 +73,7 @@ ipcMain.on('upload-files', (event, data: UploadData) => {
         env: { ...process.env, PYTHONUNBUFFERED: '1' } // Ensure stdout/stderr isn’t buffered
     });
 
+    // Handle spawn errors
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
         if (mainWindow) mainWindow.webContents.send('upload-result', { error: `Spawn failed: ${err.message}` });
@@ -139,6 +145,7 @@ ipcMain.on('upload-files', (event, data: UploadData) => {
     });
 });
 
+// Handle upload cancellation request from renderer process
 ipcMain.on('cancel-upload', () => {
     if (uploadProcess) {
         uploadProcess.kill('SIGTERM');

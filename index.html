@@ -9,7 +9,7 @@
         #results { margin-top: 20px; padding: 10px; }
         .mode-toggle { margin: 10px 0; }
         .progress-container { width: 100%; background: #f0f0f0; border-radius: 5px; margin-top: 10px; }
-        #progress-bar { height: 20px; background: #4caf50; width: 0%; transition: width 0.3s; border-radius: 5px; }
+        #progress-bar { height: 20px; background: #4caf50; width: 0; transition: width 0.3s; border-radius: 5px; }
         #progress-text { margin-top: 5px; font-size: 14px; }
     </style>
 </head>
@@ -70,7 +70,7 @@
 
     function selectFiles() {
         const mode = document.querySelector('input[name="mode"]:checked').value;
-        window.electronAPI.selectFiles(mode).then(files => {
+        window["electronAPI"].selectFiles(mode).then(files => {
             selectedFiles = files;
             statusText.innerHTML = `Selected: ${files.length} items`;
             progressBar.style.width = '0%';
@@ -97,7 +97,7 @@
         progressText.innerHTML = '0%';
         document.getElementById('uploadButton').disabled = true;
         document.getElementById('cancelButton').disabled = false;
-        window.electronAPI.uploadFiles({
+        window["electronAPI"].uploadFiles({
             connection_string: connectionString,
             container_name: containerName,
             files: selectedFiles,
@@ -106,15 +106,15 @@
     }
 
     function cancelUpload() {
-        window.electronAPI.cancelUpload();
+        window["electronAPI"].cancelUpload();
     }
 
-    window.electronAPI.onUploadProgress((progress) => {
+    window["electronAPI"].onUploadProgress((progress) => {
         progressBar.style.width = `${progress.progress}%`;
         progressText.innerHTML = `${progress.progress}% (${progress.completedFiles}/${progress.totalFiles})`;
     });
 
-    window.electronAPI.onUploadResult((results) => {
+    window["electronAPI"].onUploadResult((results) => {
         document.getElementById('uploadButton').disabled = false;
         document.getElementById('cancelButton').disabled = true;
         if (results.error) {

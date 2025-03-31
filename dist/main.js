@@ -48,6 +48,7 @@ const child_process_1 = require("child_process");
 const fs = __importStar(require("fs"));
 let mainWindow = null;
 let uploadProcess = null;
+// Create the main window
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 800,
@@ -58,11 +59,12 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js')
         }
     });
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile('index.html').then(() => console.log('Loaded index.html')).catch(console.error);
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
+// Initialize the app
 electron_1.app.whenReady().then(createWindow).catch(console.error);
 electron_1.app.on('window-all-closed', () => {
     if (process.platform !== 'darwin')
@@ -72,7 +74,8 @@ electron_1.app.on('activate', () => {
     if (electron_1.BrowserWindow.getAllWindows().length === 0)
         createWindow();
 });
-electron_1.ipcMain.handle('select-files', (event, mode) => __awaiter(void 0, void 0, void 0, function* () {
+// Handle IPC messages
+electron_1.ipcMain.handle('select-files', (_event, mode) => __awaiter(void 0, void 0, void 0, function* () {
     if (!mainWindow)
         return [];
     const options = {
@@ -81,7 +84,8 @@ electron_1.ipcMain.handle('select-files', (event, mode) => __awaiter(void 0, voi
     const result = yield electron_1.dialog.showOpenDialog(mainWindow, options);
     return result.canceled ? [] : result.filePaths;
 }));
-electron_1.ipcMain.on('upload-files', (event, data) => {
+// Handle file upload request from renderer process
+electron_1.ipcMain.on('upload-files', (_event, data) => {
     var _a, _b;
     const uploaderPath = electron_1.app.isPackaged
         ? path.join(process.resourcesPath, 'blob_uploader.exe')
@@ -98,6 +102,7 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
         windowsHide: true,
         env: Object.assign(Object.assign({}, process.env), { PYTHONUNBUFFERED: '1' }) // Ensure stdout/stderr isn’t buffered
     });
+    // Handle spawn errors
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
         if (mainWindow)
@@ -162,6 +167,7 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
         }
     });
 });
+// Handle upload cancellation request from renderer process
 electron_1.ipcMain.on('cancel-upload', () => {
     if (uploadProcess) {
         uploadProcess.kill('SIGTERM');

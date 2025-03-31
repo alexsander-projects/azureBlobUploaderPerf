@@ -21,6 +21,7 @@ log_file = 'upload_log.txt'
 log_lock = threading.Lock()
 
 
+# Log file uploads
 def log_upload(file_path: str):
     with log_lock:
         with open(log_file, 'a', encoding='utf-8') as f:
@@ -29,6 +30,7 @@ def log_upload(file_path: str):
             f.flush()
 
 
+# Sanitize blob name to make sure it is shown correctly in Azure Storage
 def sanitize_blob_name(file_path: str, base_dir: str) -> str:
     relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
     logging.info(f"Calculated relative path: {relative_path}")
@@ -45,6 +47,7 @@ def sanitize_blob_name(file_path: str, base_dir: str) -> str:
         return safe_name
 
 
+# Blob uploader class with multi-threading support for faster uploads to Azure Storage
 class BlobUploader:
     def __init__(self, connection_string: str, container_name: str, access_tier: str, num_threads: int = 4):
         self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -56,6 +59,7 @@ class BlobUploader:
         self.lock = threading.Lock()
         self.cancelled = False
 
+    # Upload file to Azure Storage Blob
     def upload_file(self, file_path: str, base_dir: str) -> Optional[str]:
         if self.cancelled:
             return f"Upload cancelled: {file_path}"
@@ -74,6 +78,7 @@ class BlobUploader:
         except Exception as e:
             return f"Error uploading {file_path}: {str(e)}"
 
+    # Worker function for multi-threading
     def worker(self):
         global file_path, base_dir
         while not self.cancelled:
@@ -89,6 +94,7 @@ class BlobUploader:
                 self.results[file_path] = result
             self.upload_queue.task_done()
 
+    # Upload multiple files to Azure Storage Blob
     def upload_files(self, file_paths: list) -> Dict[str, str]:
         self.results = {}
         if not file_paths:
@@ -106,6 +112,7 @@ class BlobUploader:
 
         return self.results
 
+    # Determine base directory based on input file paths
     @staticmethod
     def determine_base_dir(file_paths: list) -> str:
         if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
@@ -116,6 +123,7 @@ class BlobUploader:
             common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
             return os.path.dirname(common_parent)
 
+    # Collect all files to upload based on input file paths
     @staticmethod
     def collect_all_files(file_paths: list, base_dir: str) -> list:
         all_files = []
@@ -129,10 +137,12 @@ class BlobUploader:
                 all_files.append((path, base_dir))
         return all_files
 
+    # Enqueue all files for upload
     def enqueue_files(self, all_files: list):
         for file_path, base_dir in all_files:
             self.upload_queue.put((file_path, base_dir))
 
+    # Start upload threads based on number of files
     def start_upload_threads(self, num_files: int):
         threads = []
         for _ in range(min(self.num_threads, num_files)):
@@ -142,6 +152,7 @@ class BlobUploader:
         for t in threads:
             t.join()
 
+    # Cancel the upload process
     def cancel(self):
         self.cancelled = True
 
@@ -165,6 +176,7 @@ def main():
 
         uploader = BlobUploader(connection_string, container_name, access_tier)
 
+        # Handle SIGTERM signal to cancel the upload process
         import signal
         signal.signal(signal.SIGTERM, lambda signum, frame: uploader.cancel())
 
