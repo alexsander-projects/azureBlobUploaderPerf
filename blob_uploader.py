@@ -1,18 +1,19 @@
+import json
+import logging
+import os
 import queue
 import sys
 import threading
-from queue import Queue, Empty as emp
-from azure.storage.blob import BlobServiceClient
-from typing import Dict, Optional
-import json
-import os
-import logging
-import unicodedata
 from datetime import datetime
+from queue import Queue
+from typing import Dict, Optional
+
+import unicodedata
+from azure.storage.blob import BlobServiceClient
 
 # Force UTF-8 for stdin and stdout
-sys.stdin.reconfigure(encoding='utf-8')
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', buffering=True)
+sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=True)
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
 # Thread-safe file logging
@@ -93,11 +94,11 @@ class BlobUploader:
         if not file_paths:
             return self.results
 
-        base_dir = self.determine_base_dir(file_paths)
+        base_dir = self.determine_base_dir()
         logging.info(f"Base directory: {base_dir}")
         logging.info(f"Selected paths: {file_paths}")
 
-        all_files = self.collect_all_files(file_paths, base_dir)
+        all_files = self.collect_all_files(base_dir)
         logging.info(f"Total files to upload: {len(all_files)}")
 
         self.enqueue_files(all_files)
@@ -105,7 +106,8 @@ class BlobUploader:
 
         return self.results
 
-    def determine_base_dir(self, file_paths: list) -> str:
+    @staticmethod
+    def determine_base_dir(file_paths: list) -> str:
         if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
             return os.path.dirname(file_paths[0])
         elif len(file_paths) == 1:
@@ -114,7 +116,8 @@ class BlobUploader:
             common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
             return os.path.dirname(common_parent)
 
-    def collect_all_files(self, file_paths: list, base_dir: str) -> list:
+    @staticmethod
+    def collect_all_files(file_paths: list, base_dir: str) -> list:
         all_files = []
         for path in file_paths:
             if os.path.isdir(path):
@@ -138,6 +141,9 @@ class BlobUploader:
             threads.append(t)
         for t in threads:
             t.join()
+
+    def cancel(self):
+        self.cancelled = True
 
 
 def main():
