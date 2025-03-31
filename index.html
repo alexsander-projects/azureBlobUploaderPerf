@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Azure Blob Uploader</title>
     <style>
@@ -17,24 +17,32 @@
     <div class="container">
         <h2>Azure Blob Uploader</h2>
         <div class="input-group">
-            <label>Connection String:</label>
+            <label>
+                <input type="text" id="connectionString" style="width: 100%;">
+                Connection String:
 
-            <input type="text" id="connectionString" style="width: 100%;">
+            </label>
+
+
         </div>
         <div class="input-group">
-            <label>Container Name:</label>
+            <label>
+                <input type="text" id="containerName" style="width: 100%;"/>
+                Container Name:
+            </label>
 
-            <input type="text" id="containerName" style="width: 100%;">
+
         </div>
         <div class="input-group">
-            <label>Access Tier:</label>
-
-            <select id="accessTier">
+            <label>
+                <select id="accessTier">
                 <option value="Hot">Hot</option>
                 <option value="Cool">Cool</option>
                 <option value="Cold">Cold</option>
                 <option value="Archive">Archive</option>
             </select>
+
+                Access Tier:</label>
         </div>
         <div class="input-group">
             <div class="mode-toggle">
@@ -69,6 +77,8 @@
             progressText.innerHTML = '';
             document.getElementById('uploadButton').disabled = false;
             document.getElementById('cancelButton').disabled = true;
+        }).catch(error => {
+            alert(`Error: ${error}`);
         });
     }
 

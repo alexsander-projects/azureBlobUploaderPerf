@@ -63,7 +63,7 @@ function createWindow() {
         mainWindow = null;
     });
 }
-electron_1.app.whenReady().then(createWindow);
+electron_1.app.whenReady().then(createWindow).catch(console.error);
 electron_1.app.on('window-all-closed', () => {
     if (process.platform !== 'darwin')
         electron_1.app.quit();
@@ -93,9 +93,10 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
             mainWindow.webContents.send('upload-result', { error: `Uploader executable not found at: ${uploaderPath}` });
         return;
     }
+    // Spawn with unbuffered output
     uploadProcess = (0, child_process_1.spawn)(uploaderPath, [], {
         windowsHide: true,
-        env: Object.assign(Object.assign({}, process.env), { PYTHONUNBUFFERED: '1' })
+        env: Object.assign(Object.assign({}, process.env), { PYTHONUNBUFFERED: '1' }) // Ensure stdout/stderr isn’t buffered
     });
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
@@ -121,32 +122,27 @@ electron_1.ipcMain.on('upload-files', (event, data) => {
     let stdoutOutput = '';
     let stderrOutput = '';
     let completedFiles = 0;
-    let totalFiles = 0; // Initialize as 0, to be set from backend
+    const totalFiles = data.files.length;
+    // Listen to stderr for Azure SDK logs (requests and responses)
     (_a = uploadProcess.stderr) === null || _a === void 0 ? void 0 : _a.on('data', (chunk) => {
         stderrOutput += chunk.toString();
         console.log('stderr chunk:', stderrOutput);
+        // Process line-by-line for successful responses
         const lines = stderrOutput.split('\n');
         for (const line of lines) {
-            // Extract total files from the backend
-            const totalMatch = line.match(/TOTAL_FILES: (\d+)/);
-            if (totalMatch) {
-                totalFiles = parseInt(totalMatch[1], 10);
-                console.log(`Set totalFiles to: ${totalFiles}`);
-            }
-            // Update progress on successful uploads
             if (line.includes("Response status: 200") || line.includes("Response status: 201")) {
                 completedFiles++;
-                if (totalFiles > 0) { // Ensure totalFiles is set before calculating
-                    const progress = Math.min(Math.round((completedFiles / totalFiles) * 100), 100);
-                    console.log(`Progress update: ${progress}% (${completedFiles}/${totalFiles})`);
-                    if (mainWindow) {
-                        mainWindow.webContents.send('upload-progress', { progress, totalFiles, completedFiles });
-                    }
+                const progress = Math.min(Math.round((completedFiles / totalFiles) * 100), 100);
+                console.log(`Progress update: ${progress}% (${completedFiles}/${totalFiles})`);
+                if (mainWindow) {
+                    mainWindow.webContents.send('upload-progress', { progress, totalFiles, completedFiles });
                 }
             }
         }
+        // Retain incomplete line
         stderrOutput = lines[lines.length - 1] || '';
     });
+    // Still listen to stdout for final result
     (_b = uploadProcess.stdout) === null || _b === void 0 ? void 0 : _b.on('data', (chunk) => {
         stdoutOutput += chunk.toString();
         console.log('stdout chunk:', stdoutOutput);

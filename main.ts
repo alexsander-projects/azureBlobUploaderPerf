@@ -23,7 +23,7 @@ function createWindow() {
     });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(createWindow).catch(console.error);
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

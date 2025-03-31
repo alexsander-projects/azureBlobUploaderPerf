@@ -1,6 +1,7 @@
+import queue
 import sys
 import threading
-from queue import Queue
+from queue import Queue, Empty as emp
 from azure.storage.blob import BlobServiceClient
 from typing import Dict, Optional
 import json
@@ -18,12 +19,14 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 log_file = 'upload_log.txt'
 log_lock = threading.Lock()
 
+
 def log_upload(file_path: str):
     with log_lock:
         with open(log_file, 'a', encoding='utf-8') as f:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write(f"{timestamp} - Uploaded: {file_path}\n")
             f.flush()
+
 
 def sanitize_blob_name(file_path: str, base_dir: str) -> str:
     relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
@@ -39,6 +42,7 @@ def sanitize_blob_name(file_path: str, base_dir: str) -> str:
         safe_name = ''.join(c if c not in '<>:"|?*' else '_' for c in safe_name)
         logging.info(f"Sanitized blob name (fallback): {safe_name}")
         return safe_name
+
 
 class BlobUploader:
     def __init__(self, connection_string: str, container_name: str, access_tier: str, num_threads: int = 4):
@@ -70,11 +74,15 @@ class BlobUploader:
             return f"Error uploading {file_path}: {str(e)}"
 
     def worker(self):
+        global file_path, base_dir
         while not self.cancelled:
             try:
                 file_path, base_dir = self.upload_queue.get_nowait()
-            except:
+            except queue.Empty:
                 break
+            except Exception as e:
+                logging.error(f"Worker error: {str(e)}")
+                self.upload_queue.task_done()
             result = self.upload_file(file_path, base_dir)
             with self.lock:
                 self.results[file_path] = result
@@ -85,17 +93,28 @@ class BlobUploader:
         if not file_paths:
             return self.results
 
-        if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
-            base_dir = os.path.dirname(file_paths[0])
-        elif len(file_paths) == 1:
-            base_dir = os.path.dirname(os.path.dirname(file_paths[0]))
-        else:
-            common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
-            base_dir = os.path.dirname(common_parent)
-
+        base_dir = self.determine_base_dir(file_paths)
         logging.info(f"Base directory: {base_dir}")
         logging.info(f"Selected paths: {file_paths}")
 
+        all_files = self.collect_all_files(file_paths, base_dir)
+        logging.info(f"Total files to upload: {len(all_files)}")
+
+        self.enqueue_files(all_files)
+        self.start_upload_threads(len(all_files))
+
+        return self.results
+
+    def determine_base_dir(self, file_paths: list) -> str:
+        if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
+            return os.path.dirname(file_paths[0])
+        elif len(file_paths) == 1:
+            return os.path.dirname(os.path.dirname(file_paths[0]))
+        else:
+            common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
+            return os.path.dirname(common_parent)
+
+    def collect_all_files(self, file_paths: list, base_dir: str) -> list:
         all_files = []
         for path in file_paths:
             if os.path.isdir(path):
@@ -105,25 +124,21 @@ class BlobUploader:
                         all_files.append((full_path, base_dir))
             else:
                 all_files.append((path, base_dir))
+        return all_files
 
-        # log all files to be uploaded
-        logging.info(f"Total files to upload: {len(all_files)}")
-
+    def enqueue_files(self, all_files: list):
         for file_path, base_dir in all_files:
             self.upload_queue.put((file_path, base_dir))
 
+    def start_upload_threads(self, num_files: int):
         threads = []
-        for _ in range(min(self.num_threads, len(all_files))):
+        for _ in range(min(self.num_threads, num_files)):
             t = threading.Thread(target=self.worker)
             t.start()
             threads.append(t)
         for t in threads:
             t.join()
-        return self.results
 
-    def cancel(self):
-        self.cancelled = True
-        logging.info("Upload cancellation requested")
 
 def main():
     try:
@@ -159,6 +174,7 @@ def main():
     except Exception as e:
         logging.error(f"Main error: {str(e)}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
