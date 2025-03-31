@@ -139,7 +139,7 @@ ipcMain.on('upload-files', (_event, data: UploadData) => {
             if (code === 0) {
                 mainWindow.webContents.send('upload-result', { success: true });
             } else {
-                mainWindow.webContents.send('upload-result', { error: `Upload failed: ${stderrOutput || 'Unknown error'} (Exit code: ${code})` });
+                mainWindow.webContents.send('upload-result', { error: `Upload failed with code ${code}` });
             }
         }
     });
