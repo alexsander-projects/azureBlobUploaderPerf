@@ -19,3 +19,20 @@ To Run the app:
 npm run build
 npm start
 ```
+
+To install the app:
+
+- Run the installer located in the dist folder
+- The app will be installed in your windows machine
+- Run the app
+
+## How it works
+
+The app uses the Azure SDK for Python to upload files to Azure Blob Storage.
+It uses typescript to create the interface and Python to handle the upload process.
+It handles threads according to the number of files to increase performance.
+
+## Performance
+
+The cpu and ram usage is low, the app is able to handle multiple files at the same time without any issues.
+> Notice that disk and network usage will be high
