@@ -7,13 +7,24 @@ It uses TypeScript for the interface and leverages Python for the upload process
 
 ## How to use
 
-First, run the following commands to start the application:
+> the app exe has already been built
+
+The command:
+
+```bash
+pyinstaller --onefile --add-data "C:\Users\Alexs\AppData\Local\Programs\Python\Python312\Lib\site-packages\azure;azure" blob_uploader.py
+```
+
+was used to build the exe file.
+It adds the azure package to the exe file to make sure it has all the dependencies.
+
 
 - To Run the app:
 
 Run the following commands:
 
 ```bash
+npm install
 npm run build
 npm start
 ```
