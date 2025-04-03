@@ -5,20 +5,38 @@ It uses TypeScript for the interface and leverages Python for the upload process
 
 ![App Screenshot](./rsc/appInterface.png)
 
-## How to use
+# How to use
 
-> the app exe has already been built
+## Running with Docker
 
-The command:
+- To build the image:
+- Make sure you have Docker installed and running on your machine.
+- RUN the following command in the root directory of the project:
 
 ```bash
-pyinstaller --onefile --add-data "C:\Users\Alexs\AppData\Local\Programs\Python\Python312\Lib\site-packages\azure;azure" blob_uploader.py
+docker build -t blob-uploader .docker build -t azure-blob-uploader-web --no-cache .
 ```
 
-was used to build the exe file.
-It adds the azure package to the exe file to make sure it has all the dependencies.
+- To run the image:
+- Run the following command in the root directory of the project:
 
-- To Run the app:
+```bash
+docker run -p 3000:3000 azure-blob-uploader-web
+``` 
+
+It will log the following message:
+
+```bash
+> azure-blob-uploader-web@0.0.1 start
+> node server.js
+
+Server running at http://localhost:3000
+```
+> use -d flag to run the container in detached mode
+
+After that, you can access the app by going to `http://localhost:3000` in your browser.
+
+## Running without Docker, as a local app
 
 Run the following commands:
 
@@ -27,8 +45,6 @@ npm install
 npm run build
 npm start
 ```
-
-- To install the app:
 
 Run the following commands:
 
