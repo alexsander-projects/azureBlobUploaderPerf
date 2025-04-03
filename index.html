@@ -62,6 +62,7 @@
         </div>
     </div>
 
+<script src="web-preload.js"></script>
 <script>
     let selectedFiles = [];
     const statusText = document.getElementById('status-text');
@@ -70,9 +71,10 @@
 
     function selectFiles() {
         const mode = document.querySelector('input[name="mode"]:checked').value;
-        window["electronAPI"].selectFiles(mode).then(files => {
-            selectedFiles = files;
+        window.electronAPI.selectFiles(mode).then(files => {
+            selectedFiles = files; // Array of { blob, path }
             statusText.innerHTML = `Selected: ${files.length} items`;
+            console.log('Selected files:', files.map(f => f.path));
             progressBar.style.width = '0%';
             progressText.innerHTML = '';
             document.getElementById('uploadButton').disabled = false;
@@ -92,34 +94,38 @@
             return;
         }
 
+        console.log('Starting upload with:', { connectionString, containerName, accessTier, files: selectedFiles.map(f => f.path) });
         statusText.innerHTML = 'Uploading...';
         progressBar.style.width = '0%';
         progressText.innerHTML = '0%';
         document.getElementById('uploadButton').disabled = true;
         document.getElementById('cancelButton').disabled = false;
-        window["electronAPI"].uploadFiles({
+
+        window.electronAPI.uploadFiles({
             connection_string: connectionString,
             container_name: containerName,
-            files: selectedFiles,
+            files: selectedFiles, // Pass { blob, path } objects
             access_tier: accessTier
         });
     }
 
     function cancelUpload() {
-        window["electronAPI"].cancelUpload();
+        window.electronAPI.cancelUpload();
     }
 
-    window["electronAPI"].onUploadProgress((progress) => {
+    window.electronAPI.onUploadProgress((progress) => {
+        console.log('Progress received:', progress);
         progressBar.style.width = `${progress.progress}%`;
         progressText.innerHTML = `${progress.progress}% (${progress.completedFiles}/${progress.totalFiles})`;
     });
 
-    window["electronAPI"].onUploadResult((results) => {
+    window.electronAPI.onUploadResult((results) => {
+        console.log('Result received:', results);
         document.getElementById('uploadButton').disabled = false;
         document.getElementById('cancelButton').disabled = true;
         if (results.error) {
             statusText.innerHTML = `Error: ${results.error}`;
-            progressBar.style.background = '#f44336'; // Red for error
+            progressBar.style.background = '#f44336';
             progressText.innerHTML = '';
         } else {
             progressBar.style.width = '100%';
