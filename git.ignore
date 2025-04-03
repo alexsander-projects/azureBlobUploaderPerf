@@ -1,9 +1,0 @@
-*.log
-build
-node_modules
-package-lock.json
-upload_log.txt
-dist/*
-.idea
-*.ts
-tsconfig.json
