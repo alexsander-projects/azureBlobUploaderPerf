@@ -43,33 +43,35 @@ const electronAPI = {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        const processStream = async () => {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const jsonData = line.substring(6);
-                        try {
-                            const result = JSON.parse(jsonData);
-                            console.log('SSE message:', result);
-                            if (result.progress !== undefined) {
-                                electronAPI._progressCallback(result);
-                            } else if (result.success || result.error) {
-                                electronAPI._resultCallback(result);
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SSE data:', e);
-                        }
-                    }
-                }
+        const processLineData = (line) => {
+    if (line.startsWith('data: ')) {
+        const jsonData = line.substring(6);
+        try {
+            const result = JSON.parse(jsonData);
+            console.log('SSE message:', result);
+            if (result.progress !== undefined) {
+                electronAPI._progressCallback(result);
+            } else if (result.success || result.error) {
+                electronAPI._resultCallback(result);
             }
-        };
+        } catch (e) {
+            console.error('Error parsing SSE data:', e);
+        }
+    }
+};
+
+const processStream = async () => {
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        lines.forEach(processLineData);
+    }
+};
 
         processStream().catch(err => {
             console.error('Stream error:', err);

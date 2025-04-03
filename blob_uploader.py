@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import queue
 import sys
 import threading
@@ -20,12 +19,14 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 log_file = 'upload_log.txt'
 log_lock = threading.Lock()
 
+
 def log_upload(file_path: str):
     with log_lock:
         with open(log_file, 'a', encoding='utf-8') as f:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             f.write(f"{timestamp} - Uploaded: {file_path}\n")
             f.flush()
+
 
 def sanitize_blob_name(file_path: str) -> str:
     logging.info(f"Original blob path: {file_path}")
@@ -40,6 +41,7 @@ def sanitize_blob_name(file_path: str) -> str:
         safe_name = ''.join(c if c not in '<>:"|?*' else '_' for c in safe_name)
         logging.info(f"Sanitized blob name (fallback): {safe_name}")
         return safe_name
+
 
 class BlobUploader:
     def __init__(self, connection_string: str, container_name: str, access_tier: str, num_threads: int = 4):
@@ -117,6 +119,7 @@ class BlobUploader:
         self.cancelled = True
         logging.info("Upload cancellation requested")
 
+
 def main():
     try:
         logging.info("Starting main function")
@@ -153,6 +156,7 @@ def main():
     except Exception as e:
         logging.error(f"Main error: {str(e)}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

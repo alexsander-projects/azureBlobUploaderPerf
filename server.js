@@ -16,7 +16,7 @@ app.post('/upload-files', upload.array('file'), async (req, res) => {
     console.log('Request body:', req.body);
     console.log('Uploaded files:', req.files.map(f => f.originalname));
 
-    const { connection_string, container_name, access_tier } = req.body;
+    const { connection_string, container_name} = req.body;
     const filePaths = Array.isArray(req.body.path) ? req.body.path : [req.body.path];
     const files = req.files.map((file, index) => ({
         tempPath: file.path,
@@ -88,7 +88,7 @@ app.post('/upload-files', upload.array('file'), async (req, res) => {
 
     uploadProcess.on('error', (err) => {
         console.error('Spawn error:', err);
-        res.write(`data: ${JSON.stringify({ error: `Spawn failed: ${err.message}` })}\n\n`);
+        res.write('data: ' + JSON.stringify({ error: 'Spawn failed: ' + err.message }) + '\n\n');
         res.end();
     });
 
@@ -100,7 +100,7 @@ app.post('/upload-files', upload.array('file'), async (req, res) => {
             res.write(`data: ${JSON.stringify({ success: true })}\n\n`);
         } else {
             console.error('Upload failed with stderr:', stderrOutput);
-            res.write(`data: ${JSON.stringify({ error: `Upload failed: ${stderrOutput || 'Unknown error'} (Exit code: ${code})` })}\n\n`);
+            res.write('data: ' + JSON.stringify({ error: 'Upload failed: ' + (stderrOutput || 'Unknown error') + ' (Exit code: ' + code + ')' }) + '\n\n');
         }
         res.end();
     });
