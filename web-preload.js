@@ -4,11 +4,11 @@ const electronAPI = {
             const input = document.createElement('input');
             input.type = 'file';
             input.multiple = true;
-            input.webkitdirectory = mode === 'folders'; // Enable folder selection
+            input.webkitdirectory = mode === 'folders';
             input.onchange = () => {
                 const files = Array.from(input.files || []).map(file => ({
                     blob: file,
-                    path: file.webkitRelativePath || file.name // Full relative path or just name
+                    path: file.webkitRelativePath || file.name
                 }));
                 console.log('Files selected in browser:', files.map(f => f.path));
                 resolve(files);
@@ -23,8 +23,9 @@ const electronAPI = {
         formData.append('container_name', data.container_name);
         formData.append('access_tier', data.access_tier);
         data.files.forEach((fileObj, index) => {
-            formData.append('file', fileObj.blob); // File content
-            formData.append('path', fileObj.path);  // Relative path
+            formData.append('file', fileObj.blob);
+            formData.append('path', fileObj.path);
+            console.log(`Appending file ${index}: ${fileObj.path}`); // Debug
         });
 
         const response = await fetch('/upload-files', {

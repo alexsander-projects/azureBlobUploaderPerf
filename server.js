@@ -17,11 +17,13 @@ app.post('/upload-files', upload.array('file'), async (req, res) => {
     console.log('Uploaded files:', req.files.map(f => f.originalname));
 
     const { connection_string, container_name, access_tier } = req.body;
-    const filePaths = Array.isArray(req.body.path) ? req.body.path : [req.body.path]; // Handle single or multiple paths
+    const filePaths = Array.isArray(req.body.path) ? req.body.path : [req.body.path];
     const files = req.files.map((file, index) => ({
         tempPath: file.path,
-        originalPath: filePaths[index] || file.originalname // Use provided path or fallback to name
+        originalPath: filePaths[index] || file.originalname
     }));
+
+    console.log('Files with paths:', files.map(f => ({ temp: f.tempPath, orig: f.originalPath }))); // Debug
 
     if (!connection_string || !container_name || !files.length) {
         console.error('Invalid request body or no files uploaded');
@@ -45,8 +47,8 @@ app.post('/upload-files', upload.array('file'), async (req, res) => {
     const jsonData = {
         connection_string,
         container_name,
-        file_paths: files.map(f => f.tempPath), // Temp paths for reading
-        original_paths: files.map(f => f.originalPath) // Original paths for naming
+        file_paths: files.map(f => f.tempPath),
+        original_paths: files.map(f => f.originalPath)
     };
     console.log('Sending input to uploader:', JSON.stringify(jsonData, null, 2));
     uploadProcess.stdin.write(JSON.stringify(jsonData) + '\n');
