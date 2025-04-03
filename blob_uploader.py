@@ -11,10 +11,12 @@ from typing import Dict, Optional
 import unicodedata
 from azure.storage.blob import BlobServiceClient
 
+# Force UTF-8 for stdin and stdout
 sys.stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', buffering=True)
 sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=True)
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
+# Thread-safe file logging
 log_file = 'upload_log.txt'
 log_lock = threading.Lock()
 
@@ -25,10 +27,9 @@ def log_upload(file_path: str):
             f.write(f"{timestamp} - Uploaded: {file_path}\n")
             f.flush()
 
-def sanitize_blob_name(file_path: str, base_dir: str) -> str:
-    relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
-    logging.info(f"Calculated relative path: {relative_path}")
-    normalized = unicodedata.normalize('NFC', relative_path)
+def sanitize_blob_name(file_path: str) -> str:
+    logging.info(f"Original blob path: {file_path}")
+    normalized = unicodedata.normalize('NFC', file_path)
     try:
         normalized.encode('utf-8')
         safe_name = ''.join(c if c not in '<>:"|?*' else '_' for c in normalized)
@@ -51,12 +52,12 @@ class BlobUploader:
         self.lock = threading.Lock()
         self.cancelled = False
 
-    def upload_file(self, file_path: str, base_dir: str, original_path: str) -> Optional[str]:
+    def upload_file(self, file_path: str, original_path: str) -> Optional[str]:
         if self.cancelled:
             return f"Upload cancelled: {file_path}"
         try:
-            logging.info(f"Received file path: {file_path}, original path: {original_path}")
-            blob_name = original_path  # Use original path directly
+            logging.info(f"Received temp file path: {file_path}, original path: {original_path}")
+            blob_name = sanitize_blob_name(original_path)  # Use full original path
             full_blob_path = f"{self.container_name}/{blob_name}"
             blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
             logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
@@ -73,14 +74,14 @@ class BlobUploader:
     def worker(self):
         while not self.cancelled:
             try:
-                file_path, base_dir, original_path = self.upload_queue.get_nowait()
+                file_path, original_path = self.upload_queue.get_nowait()
             except queue.Empty:
                 break
             except Exception as e:
                 logging.error(f"Worker error: {str(e)}")
                 self.upload_queue.task_done()
                 continue
-            result = self.upload_file(file_path, base_dir, original_path)
+            result = self.upload_file(file_path, original_path)
             with self.lock:
                 self.results[file_path] = result
             self.upload_queue.task_done()
@@ -90,53 +91,27 @@ class BlobUploader:
         if not file_paths:
             return self.results
 
-        original_paths = original_paths or file_paths  # Fallback to file_paths if no originals
+        original_paths = original_paths or file_paths
         if len(file_paths) != len(original_paths):
             raise ValueError("Mismatch between file_paths and original_paths lengths")
 
-        base_dir = self.determine_base_dir(original_paths)
-        logging.info(f"Base directory: {base_dir}")
-        logging.info(f"Selected paths: {original_paths}")
-
-        all_files = self.collect_all_files(file_paths, base_dir, original_paths)
+        logging.info(f"Selected temp paths: {file_paths}")
+        logging.info(f"Selected original paths: {original_paths}")
+        all_files = [(temp, orig) for temp, orig in zip(file_paths, original_paths)]
         logging.info(f"TOTAL_FILES: {len(all_files)}")
 
-        self.enqueue_files(all_files)
-        self.start_upload_threads(len(all_files))
+        for file_path, original_path in all_files:
+            self.upload_queue.put((file_path, original_path))
 
-        return self.results
-
-    @staticmethod
-    def determine_base_dir(file_paths: list) -> str:
-        if not file_paths:
-            return "/tmp"
-        if len(file_paths) == 1 and os.path.isdir(file_paths[0]):
-            return os.path.dirname(file_paths[0])
-        elif len(file_paths) == 1:
-            return os.path.dirname(os.path.dirname(file_paths[0]))
-        else:
-            common_parent = os.path.commonpath([os.path.dirname(p) if os.path.isfile(p) else p for p in file_paths])
-            return os.path.dirname(common_parent) if common_parent else "/tmp"
-
-    @staticmethod
-    def collect_all_files(file_paths: list, base_dir: str, original_paths: list) -> list:
-        all_files = []
-        for temp_path, orig_path in zip(file_paths, original_paths):
-            all_files.append((temp_path, base_dir, orig_path))
-        return all_files
-
-    def enqueue_files(self, all_files: list):
-        for file_path, base_dir, original_path in all_files:
-            self.upload_queue.put((file_path, base_dir, original_path))
-
-    def start_upload_threads(self, num_files: int):
         threads = []
-        for _ in range(min(self.num_threads, num_files)):
+        for _ in range(min(self.num_threads, len(all_files))):
             t = threading.Thread(target=self.worker)
             t.start()
             threads.append(t)
         for t in threads:
             t.join()
+
+        return self.results
 
     def cancel(self):
         self.cancelled = True
@@ -155,10 +130,10 @@ def main():
         connection_string = input_data["connection_string"]
         container_name = input_data["container_name"]
         file_paths = input_data["file_paths"]
-        original_paths = input_data.get("original_paths", file_paths)  # Use file_paths if no originals
+        original_paths = input_data.get("original_paths", file_paths)
         access_tier = input_data.get("access_tier", "Hot")
-        logging.info(f"Parsed file paths: {file_paths}")
-        logging.info(f"Original paths: {original_paths}")
+        logging.info(f"Parsed temp file paths: {file_paths}")
+        logging.info(f"Parsed original paths: {original_paths}")
         logging.info(f"Access tier: {access_tier}")
 
         uploader = BlobUploader(connection_string, container_name, access_tier)
