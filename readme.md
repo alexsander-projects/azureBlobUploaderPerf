@@ -18,7 +18,6 @@ pyinstaller --onefile --add-data "C:\Users\Alexs\AppData\Local\Programs\Python\P
 was used to build the exe file.
 It adds the azure package to the exe file to make sure it has all the dependencies.
 
-
 - To Run the app:
 
 Run the following commands:
