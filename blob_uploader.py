@@ -63,12 +63,22 @@ class BlobUploader:
             full_blob_path = f"{self.container_name}/{blob_name}"
             blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
             logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
+
             with open(file_path, "rb") as data:
-                blob_client.upload_blob(data, overwrite=True)
-                if self.access_tier in ['Hot', 'Cool', 'Cold', 'Archive']:
+                # Set the access_tier directly during upload when possible
+                blob_options = {}
+                if self.access_tier in ['Hot', 'Cool']:
+                    # These tiers can be set during initial upload
+                    blob_options['standard_blob_tier'] = self.access_tier
+
+                upload_response = blob_client.upload_blob(data, overwrite=True, **blob_options)
+
+                # For Archive and Cold tiers, we need to set them after upload
+                if self.access_tier in ['Cold', 'Archive']:
                     blob_client.set_standard_blob_tier(self.access_tier)
+
             log_upload(original_path)
-            logging.info("Response status: 201")
+            logging.info(f"Response status: {upload_response.status_code}")
             return f"Successfully uploaded {original_path}"
         except Exception as e:
             return f"Error uploading {original_path}: {str(e)}"
