@@ -6,9 +6,10 @@ import threading
 from datetime import datetime
 from queue import Queue
 from typing import Dict, Optional
+from azure.storage.blob import BlobServiceClient, StandardBlobTier
 
 import unicodedata
-from azure.storage.blob import BlobServiceClient
+
 
 # Force UTF-8 for stdin and stdout
 sys.stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', buffering=True)
@@ -59,23 +60,27 @@ class BlobUploader:
             return f"Upload cancelled: {file_path}"
         try:
             logging.info(f"Received temp file path: {file_path}, original path: {original_path}")
-            blob_name = sanitize_blob_name(original_path)  # Use full original path
+            blob_name = sanitize_blob_name(original_path)
             full_blob_path = f"{self.container_name}/{blob_name}"
             blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
-            logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
+
+            # Convert string tier to proper StandardBlobTier enum
+            tier_map = {
+                'Hot': StandardBlobTier.HOT,
+                'Cool': StandardBlobTier.COOL,
+                'Archive': StandardBlobTier.ARCHIVE,
+                'Cold': StandardBlobTier.COLD
+            }
+
+            access_tier = tier_map.get(self.access_tier, StandardBlobTier.HOT)
+            logging.info(f"Uploading to blob: {full_blob_path} with access tier: {access_tier}")
 
             with open(file_path, "rb") as data:
-                # Set the access_tier directly during upload when possible
-                blob_options = {}
-                if self.access_tier in ['Hot', 'Cool']:
-                    # These tiers can be set during initial upload
-                    blob_options['standard_blob_tier'] = self.access_tier
+                # Upload the blob
+                upload_response = blob_client.upload_blob(data, overwrite=True)
 
-                upload_response = blob_client.upload_blob(data, overwrite=True, **blob_options)
-
-                # For Archive and Cold tiers, we need to set them after upload
-                if self.access_tier in ['Cold', 'Archive']:
-                    blob_client.set_standard_blob_tier(self.access_tier)
+                # Set the access tier after uploading
+                blob_client.set_standard_blob_tier(access_tier)
 
             log_upload(original_path)
             logging.info(f"Response status: {upload_response.status_code}")

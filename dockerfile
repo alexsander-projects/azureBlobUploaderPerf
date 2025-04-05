@@ -1,5 +1,5 @@
 # Use Node.js base image
-FROM node:latest
+FROM node:20-slim
 
 # Install Python and venv
 RUN apt-get update && apt-get install -y python3 python3-pip python3-venv
@@ -9,7 +9,7 @@ RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Install Azure SDK
-RUN pip3 install azure-storage-blob
+RUN pip3 install azure-storage-blob==12.18.0
 
 # Create temp upload directory
 RUN mkdir -p /tmp/uploads
