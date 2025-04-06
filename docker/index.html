@@ -80,6 +80,21 @@
             margin-top: 20px;
             display: none;
         }
+        .file-tree {
+        margin: 5px 0;
+        }
+        .folder {
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .count {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .file-summary {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -109,6 +124,10 @@
 
     <div class="container">
         <h3>Files</h3>
+        <div class="form-group">
+            <label for="targetFolder">Target Folder (for individual files):</label>
+            <input type="text" id="targetFolder" placeholder="e.g., images/2023/">
+        </div>
 
         <div class="form-group">
             <label for="fileInput">Select Files:</label>
@@ -144,19 +163,48 @@
 
     <script>
         let selectedFiles = [];
+        let filePathMap = new Map(); // maps file names to their paths
         let currentUploadId = null;
         let statusCheckInterval = null;
 
         // File selection handling
         document.getElementById('fileInput').addEventListener('change', (event) => {
             selectedFiles = Array.from(event.target.files);
+            processFiles();
             updateFileList();
         });
 
         document.getElementById('folderInput').addEventListener('change', (event) => {
             selectedFiles = Array.from(event.target.files);
+            processFiles();
             updateFileList();
         });
+
+        function processFiles() {
+            filePathMap.clear();
+            const targetFolder = document.getElementById('targetFolder').value || '';
+            const folderPrefix = targetFolder ?
+                (targetFolder.endsWith('/') ? targetFolder : targetFolder + '/') :
+                '';
+
+            selectedFiles.forEach(file => {
+                // For folder uploads - use webkitRelativePath
+                if (file.webkitRelativePath) {
+                    filePathMap.set(file, file.webkitRelativePath);
+                }
+                // For individual files - add the target folder prefix
+                else {
+                    let pathParts = file.name.split(/[/\\]/);
+                    if (pathParts.length > 1) {
+                        // Use the full name as path as it already contains structure
+                        filePathMap.set(file, file.name);
+                    } else {
+                        // Add target folder prefix to simple filenames
+                        filePathMap.set(file, folderPrefix + file.name);
+                    }
+                }
+            });
+        }
 
         function updateFileList() {
             const fileList = document.getElementById('fileList');
@@ -166,30 +214,146 @@
                 return;
             }
 
-            // Count files and folders
-            const folderPaths = new Set();
+            // Group files by folder/type
+            const fileHierarchy = {};
+            let totalFileCount = 0;
+            const targetFolder = document.getElementById('targetFolder').value || '';
+
             selectedFiles.forEach(file => {
+                totalFileCount++;
+
+                // For folder uploads - use actual hierarchy from webkitRelativePath
                 if (file.webkitRelativePath) {
-                    // Extract folder path
-                    const parts = file.webkitRelativePath.split('/');
-                    if (parts.length > 1) {
-                        folderPaths.add(parts[0]);
+                    const pathParts = file.webkitRelativePath.split('/');
+                    let currentLevel = fileHierarchy;
+
+                    // Create nested structure
+                    for (let i = 0; i < pathParts.length - 1; i++) {
+                        const part = pathParts[i];
+                        if (!currentLevel[part]) {
+                            currentLevel[part] = {};
+                        }
+                        currentLevel = currentLevel[part];
+                    }
+
+                    // Add file at the end
+                    const fileName = pathParts[pathParts.length - 1];
+                    if (!currentLevel._files) currentLevel._files = [];
+                    currentLevel._files.push(fileName);
+                }
+                // For individual files - check if filename contains path separators
+                else {
+                    let pathParts = file.name.split(/[\/\\]/); // Split on / or \
+                    let filePath = file.name;
+
+                    // If the filename has path structure (e.g., "docs/readme.txt")
+                    if (pathParts.length > 1) {
+                        let currentLevel = fileHierarchy;
+
+                        // Create nested structure
+                        for (let i = 0; i < pathParts.length - 1; i++) {
+                            const part = pathParts[i];
+                            if (!currentLevel[part]) {
+                                currentLevel[part] = {};
+                            }
+                            currentLevel = currentLevel[part];
+                        }
+
+                        // Add file at the end
+                        const fileName = pathParts[pathParts.length - 1];
+                        if (!currentLevel._files) currentLevel._files = [];
+                        currentLevel._files.push(fileName);
+                    }
+                    // For simple filenames - use target folder if specified
+                    else {
+                        if (targetFolder) {
+                            // Show files under the target folder in UI
+                            const folderParts = targetFolder.split('/').filter(p => p.length > 0);
+                            let currentLevel = fileHierarchy;
+
+                            // Create target folder structure
+                            for (let i = 0; i < folderParts.length; i++) {
+                                const part = folderParts[i];
+                                if (!currentLevel[part]) {
+                                    currentLevel[part] = {};
+                                }
+                                currentLevel = currentLevel[part];
+                            }
+
+                            // Add file under target folder
+                            if (!currentLevel._files) currentLevel._files = [];
+                            currentLevel._files.push(file.name);
+                        } else {
+                            // No target folder - group by extension
+                            const fileExt = file.name.split('.').pop().toLowerCase();
+                            const groupName = fileExt ? `.${fileExt} files` : 'Other files';
+
+                            if (!fileHierarchy[groupName]) {
+                                fileHierarchy[groupName] = { _files: [] };
+                            }
+                            fileHierarchy[groupName]._files.push(file.name);
+                        }
                     }
                 }
             });
 
-            const folderCount = folderPaths.size;
-            const fileCount = selectedFiles.length - folderCount;
-
-            // Show summary instead of individual files
-            let html = '<div class="file-item">';
-            html += `<strong>${fileCount}</strong> files selected`;
-            if (folderCount > 0) {
-                html += ` in <strong>${folderCount}</strong> folders`;
-            }
-            html += '</div>';
+            // Generate HTML for hierarchy
+            let html = `<div class="file-summary"><strong>${totalFileCount}</strong> files selected</div>`;
+            html += generateHierarchyHTML(fileHierarchy);
 
             fileList.innerHTML = html;
+        }
+
+        // Generate HTML for file hierarchy
+        function generateHierarchyHTML(hierarchy, level = 0) {
+            let html = '<ul class="file-tree" style="list-style-type: none; padding-left: 20px;">';
+
+            // Process folders first
+            Object.keys(hierarchy).sort().forEach(key => {
+                if (key !== '_files') {
+                    const folderContent = hierarchy[key];
+                    const fileCount = countFiles(folderContent);
+
+                    html += `
+                        <li>
+                            <span class="folder">📁 ${key}</span>
+                            <span class="count">(${fileCount} files)</span>
+                            ${generateHierarchyHTML(folderContent, level + 1)}
+                        </li>
+                    `;
+                }
+            });
+
+            // Then show files (if any at this level)
+            if (hierarchy._files && hierarchy._files.length) {
+                // Show only first 3 files if there are many
+                const filesToShow = hierarchy._files.length > 3 ?
+                    [...hierarchy._files.slice(0, 3), `... ${hierarchy._files.length - 3} more`] :
+                    hierarchy._files;
+
+                filesToShow.forEach(file => {
+                    html += `<li>📄 ${file}</li>`;
+                });
+            }
+
+            html += '</ul>';
+            return html;
+        }
+
+        // Count total files in a hierarchy object
+        function countFiles(hierarchy) {
+            let count = 0;
+            if (hierarchy._files) {
+                count += hierarchy._files.length;
+            }
+
+            Object.keys(hierarchy).forEach(key => {
+                if (key !== '_files') {
+                    count += countFiles(hierarchy[key]);
+                }
+            });
+
+            return count;
         }
 
         // Upload handling
@@ -219,9 +383,10 @@
             formData.append('container_name', containerName);
             formData.append('access_tier', accessTier);
 
-            // Add all files to the form data
+            // Add all files to the form data WITH THEIR PATHS
             selectedFiles.forEach(file => {
-                formData.append('files', file);
+                const path = filePathMap.get(file);
+                formData.append('files', file, path);
             });
 
             try {
