@@ -63,27 +63,23 @@ class BlobUploader:
             blob_name = sanitize_blob_name(original_path)
             full_blob_path = f"{self.container_name}/{blob_name}"
             blob_client = self.blob_service_client.get_blob_client(container=self.container_name, blob=blob_name)
-
-            # Convert string tier to proper StandardBlobTier enum
-            tier_map = {
-                'Hot': StandardBlobTier.HOT,
-                'Cool': StandardBlobTier.COOL,
-                'Archive': StandardBlobTier.ARCHIVE,
-                'Cold': StandardBlobTier.COLD
-            }
-
-            access_tier = tier_map.get(self.access_tier, StandardBlobTier.HOT)
-            logging.info(f"Uploading to blob: {full_blob_path} with access tier: {access_tier}")
+            logging.info(f"Uploading to blob: {full_blob_path} with access tier: {self.access_tier}")
 
             with open(file_path, "rb") as data:
                 # Upload the blob
                 upload_response = blob_client.upload_blob(data, overwrite=True)
 
                 # Set the access tier after uploading
-                blob_client.set_standard_blob_tier(access_tier)
+                blob_client.set_standard_blob_tier(self.access_tier)
 
             log_upload(original_path)
-            logging.info(f"Response status: {upload_response.status_code}")
+
+            # Handle both object and dictionary response types
+            if hasattr(upload_response, 'status_code'):
+                logging.info(f"Response status: {upload_response.status_code}")
+            else:
+                logging.info(f"Upload response: {upload_response}")
+
             return f"Successfully uploaded {original_path}"
         except Exception as e:
             return f"Error uploading {original_path}: {str(e)}"

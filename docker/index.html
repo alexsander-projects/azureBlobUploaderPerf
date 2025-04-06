@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Blob Uploader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 10px 15px;
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .progress {
+            height: 20px;
+            background-color: #f3f3f3;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #0078d4;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .file-list {
+            margin-top: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 50px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .file-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        #results {
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Azure Blob Uploader</h1>
+
+    <div class="container">
+        <div class="form-group">
+            <label for="connectionString">Connection String:</label>
+            <input type="text" id="connectionString" placeholder="Enter Azure Storage connection string">
+        </div>
+
+        <div class="form-group">
+            <label for="containerName">Container Name:</label>
+            <input type="text" id="containerName" placeholder="Enter container name">
+        </div>
+
+        <div class="form-group">
+            <label for="accessTier">Access Tier:</label>
+            <select id="accessTier">
+                <option value="Hot">Hot</option>
+                <option value="Cool">Cool</option>
+                <option value="Cold">Cold</option>
+                <option value="Archive">Archive</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="container">
+        <h3>Files</h3>
+
+        <div class="form-group">
+            <label for="fileInput">Select Files:</label>
+            <input type="file" id="fileInput" multiple>
+        </div>
+
+        <div class="form-group">
+            <label for="folderInput">Select Folders:</label>
+            <input type="file" id="folderInput" webkitdirectory directory multiple>
+        </div>
+
+        <div class="file-list" id="fileList">
+            <p>No files selected yet.</p>
+        </div>
+
+        <div class="form-group" style="margin-top: 20px;">
+            <button id="uploadBtn" class="btn">Upload</button>
+            <button id="cancelBtn" class="btn btn-danger" style="display: none;">Cancel</button>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div id="progressText">0%</div>
+        </div>
+
+        <div id="results" class="container">
+            <h3>Upload Results</h3>
+            <pre id="resultsContent"></pre>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+        let currentUploadId = null;
+        let statusCheckInterval = null;
+
+        // File selection handling
+        document.getElementById('fileInput').addEventListener('change', (event) => {
+            selectedFiles = Array.from(event.target.files);
+            updateFileList();
+        });
+
+        document.getElementById('folderInput').addEventListener('change', (event) => {
+            selectedFiles = Array.from(event.target.files);
+            updateFileList();
+        });
+
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+
+            if (selectedFiles.length === 0) {
+                fileList.innerHTML = '<p>No files selected yet.</p>';
+                return;
+            }
+
+            // Count files and folders
+            const folderPaths = new Set();
+            selectedFiles.forEach(file => {
+                if (file.webkitRelativePath) {
+                    // Extract folder path
+                    const parts = file.webkitRelativePath.split('/');
+                    if (parts.length > 1) {
+                        folderPaths.add(parts[0]);
+                    }
+                }
+            });
+
+            const folderCount = folderPaths.size;
+            const fileCount = selectedFiles.length - folderCount;
+
+            // Show summary instead of individual files
+            let html = '<div class="file-item">';
+            html += `<strong>${fileCount}</strong> files selected`;
+            if (folderCount > 0) {
+                html += ` in <strong>${folderCount}</strong> folders`;
+            }
+            html += '</div>';
+
+            fileList.innerHTML = html;
+        }
+
+        // Upload handling
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                alert('Please select files to upload');
+                return;
+            }
+
+            const connectionString = document.getElementById('connectionString').value;
+            const containerName = document.getElementById('containerName').value;
+            const accessTier = document.getElementById('accessTier').value;
+
+            if (!connectionString || !containerName) {
+                alert('Please enter connection string and container name');
+                return;
+            }
+
+            // Show progress container and cancel button
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            document.getElementById('uploadBtn').disabled = true;
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('connection_string', connectionString);
+            formData.append('container_name', containerName);
+            formData.append('access_tier', accessTier);
+
+            // Add all files to the form data
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+
+            try {
+                // Start upload
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentUploadId = data.upload_id;
+
+                // Start polling for status
+                startStatusPolling();
+            } catch (error) {
+                showError(`Upload failed: ${error.message}`);
+                resetUploadUI();
+            }
+        });
+
+        // Cancel upload
+        document.getElementById('cancelBtn').addEventListener('click', async () => {
+            if (!currentUploadId) return;
+
+            try {
+                await fetch(`/api/cancel/${currentUploadId}`, {
+                    method: 'POST'
+                });
+
+                stopStatusPolling();
+                showError('Upload cancelled');
+                resetUploadUI();
+            } catch (error) {
+                console.error('Error cancelling upload:', error);
+            }
+        });
+
+        // Status polling functions
+        function startStatusPolling() {
+            if (!currentUploadId) return;
+
+            statusCheckInterval = setInterval(checkUploadStatus, 1000);
+        }
+
+        function stopStatusPolling() {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
+        }
+
+        async function checkUploadStatus() {
+            if (!currentUploadId) return;
+
+            try {
+                const response = await fetch(`/api/status/${currentUploadId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const status = await response.json();
+
+                if (status.status === 'running') {
+                    // Update progress - ensure we have some progress even without completedFiles
+                    let progress = 0;
+
+                    if (status.totalFiles > 0 && status.completedFiles >= 0) {
+                        progress = Math.round((status.completedFiles / status.totalFiles) * 100);
+                    } else if (status.progress) {
+                        progress = status.progress;
+                    }
+
+                    document.getElementById('progressBar').style.width = progress + '%';
+                    document.getElementById('progressText').textContent =
+                        `${progress}% (${status.completedFiles || 0}/${status.totalFiles})`;
+                } else {
+                    // Upload completed, failed or cancelled
+                    stopStatusPolling();
+
+                    if (status.status === 'completed') {
+                        showResults(status.results);
+                    } else {
+                        const errorMessage = status.results?.error || `Upload ${status.status}`;
+                        showError(errorMessage);
+                    }
+
+                    resetUploadUI();
+                }
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        // UI helper functions
+        function resetUploadUI() {
+            document.getElementById('uploadBtn').disabled = false;
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        function showResults(results) {
+            const resultsDiv = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+
+            resultsDiv.style.display = 'block';
+            resultsContent.style.color = 'inherit';
+            resultsContent.textContent = JSON.stringify(results, null, 2);
+        }
+
+        function showError(message) {
+            const resultsDiv = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+
+            resultsDiv.style.display = 'block';
+            resultsContent.style.color = 'red';
+            resultsContent.textContent = `Error: ${message}`;
+        }
+    </script>
+</body>
+</html>

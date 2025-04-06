@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Create required directories
+RUN mkdir -p templates static
+
+# Install dependencies
+COPY docker/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY blob_uploader.py .
+COPY docker/app.py .
+COPY docker/index.html ./templates/
+
+EXPOSE 5000
+
+# Run the web application
+CMD ["python", "app.py"]
