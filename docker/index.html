@@ -183,9 +183,11 @@
         function processFiles() {
             filePathMap.clear();
             const targetFolder = document.getElementById('targetFolder').value || '';
-            const folderPrefix = targetFolder ?
-                (targetFolder.endsWith('/') ? targetFolder : targetFolder + '/') :
-                '';
+            let folderPrefix = '';
+
+            if (targetFolder) {
+                folderPrefix = targetFolder.endsWith('/') ? targetFolder : targetFolder + '/';
+            }
 
             selectedFiles.forEach(file => {
                 // For folder uploads - use webkitRelativePath
@@ -215,17 +217,34 @@
             }
 
             // Group files by folder/type
+            const fileHierarchy = buildFileHierarchy();
+            const totalFileCount = countAllFiles(selectedFiles);
+
+            // Generate HTML for hierarchy
+            let html = `<div class="file-summary"><strong>${totalFileCount}</strong> files selected</div>`;
+            html += generateHierarchyHTML(fileHierarchy);
+
+            fileList.innerHTML = html;
+        }
+
+        function buildFileHierarchy() {
             const fileHierarchy = {};
-            let totalFileCount = 0;
             const targetFolder = document.getElementById('targetFolder').value || '';
 
             selectedFiles.forEach(file => {
-                totalFileCount++;
-
-                // For folder uploads - use actual hierarchy from webkitRelativePath
                 if (file.webkitRelativePath) {
+                    processFolderUpload(fileHierarchy, file);
+                } else {
+                    processIndividualFile(fileHierarchy, file, targetFolder);
+                }
+            });
+
+            return fileHierarchy;
+        }
+
+        function processFolderUpload(hierarchy, file) {
                     const pathParts = file.webkitRelativePath.split('/');
-                    let currentLevel = fileHierarchy;
+            let currentLevel = hierarchy;
 
                     // Create nested structure
                     for (let i = 0; i < pathParts.length - 1; i++) {
@@ -241,14 +260,21 @@
                     if (!currentLevel._files) currentLevel._files = [];
                     currentLevel._files.push(fileName);
                 }
-                // For individual files - check if filename contains path separators
-                else {
-                    let pathParts = file.name.split(/[\/\\]/); // Split on / or \
-                    let filePath = file.name;
+
+        function processIndividualFile(hierarchy, file, targetFolder) {
+                    let pathParts = file.name.split(/[/\\]/); // Split on / or \
 
                     // If the filename has path structure (e.g., "docs/readme.txt")
                     if (pathParts.length > 1) {
-                        let currentLevel = fileHierarchy;
+                createNestedStructure(hierarchy, pathParts);
+            } else {
+                // For simple filenames - use target folder if specified
+                processSimpleFilename(hierarchy, file, targetFolder);
+            }
+        }
+
+        function createNestedStructure(hierarchy, pathParts) {
+            let currentLevel = hierarchy;
 
                         // Create nested structure
                         for (let i = 0; i < pathParts.length - 1; i++) {
@@ -264,19 +290,19 @@
                         if (!currentLevel._files) currentLevel._files = [];
                         currentLevel._files.push(fileName);
                     }
-                    // For simple filenames - use target folder if specified
-                    else {
+
+        function processSimpleFilename(hierarchy, file, targetFolder) {
                         if (targetFolder) {
                             // Show files under the target folder in UI
                             const folderParts = targetFolder.split('/').filter(p => p.length > 0);
-                            let currentLevel = fileHierarchy;
+                let currentLevel = hierarchy;
 
                             // Create target folder structure
-                            for (let i = 0; i < folderParts.length; i++) {
-                                const part = folderParts[i];
+                            for (const part of folderParts) {
                                 if (!currentLevel[part]) {
                                     currentLevel[part] = {};
                                 }
+                                    currentLevel = currentLevel[part];
                                 currentLevel = currentLevel[part];
                             }
 
@@ -288,21 +314,12 @@
                             const fileExt = file.name.split('.').pop().toLowerCase();
                             const groupName = fileExt ? `.${fileExt} files` : 'Other files';
 
-                            if (!fileHierarchy[groupName]) {
-                                fileHierarchy[groupName] = { _files: [] };
-                            }
-                            fileHierarchy[groupName]._files.push(file.name);
+                if (!hierarchy[groupName]) {
+                    hierarchy[groupName] = { _files: [] };
                         }
+                hierarchy[groupName]._files.push(file.name);
                     }
                 }
-            });
-
-            // Generate HTML for hierarchy
-            let html = `<div class="file-summary"><strong>${totalFileCount}</strong> files selected</div>`;
-            html += generateHierarchyHTML(fileHierarchy);
-
-            fileList.innerHTML = html;
-        }
 
         // Generate HTML for file hierarchy
         function generateHierarchyHTML(hierarchy, level = 0) {
@@ -354,6 +371,11 @@
             });
 
             return count;
+        }
+
+        // Helper to count all files quickly
+        function countAllFiles(files) {
+            return files.length;
         }
 
         // Upload handling
