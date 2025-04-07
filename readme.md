@@ -9,32 +9,14 @@ It uses TypeScript for the interface and leverages Python for the upload process
 
 ## Running with Docker
 
-- To build the image:
-- Make sure you have Docker installed and running on your machine.
-- RUN the following command in the root directory of the project:
+Run docker compose to build the images:
 
 ```bash
-docker build -t blob-uploader .docker build -t azure-blob-uploader-web --no-cache .
+docker-compose build --no-cache && docker-compose up
 ```
 
-- To run the image:
-- Run the following command in the root directory of the project:
+The app will be available at `http://127.0.0.1:5000`
 
-```bash
-docker run -p 3000:3000 azure-blob-uploader-web
-``` 
-
-It will log the following message:
-
-```bash
-> azure-blob-uploader-web@0.0.1 start
-> node server.js
-
-Server running at http://localhost:3000
-```
-> use -d flag to run the container in detached mode
-
-After that, you can access the app by going to `http://localhost:3000` in your browser.
 
 ## Running without Docker, as a local app
 
@@ -97,6 +79,10 @@ if you select a folder named `folder1`
 that contains a folder named `folder2` that contains a file named`file1.txt`, 
 the file will be uploaded to the container with the following path:
 `folder1/folder2/file1.txt`.
+
+> Name hierarchy will only be respected for folders when running the app on docker.
+> To respect name hierarchy when running the app on docker, use the Target Folder (for individual files):
+> e.g. `uploads/`
 
 
 ## How it works
