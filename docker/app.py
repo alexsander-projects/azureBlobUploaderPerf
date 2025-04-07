@@ -120,11 +120,12 @@ def run_uploader(upload_id, input_data):
         upload_processes[upload_id]["results"] = {"error": str(e)}
     finally:
         # Clean up temporary files
+        # Clean up temporary files
         for path in input_data["file_paths"]:
             try:
                 os.remove(path)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {path}: {str(e)}")
 
 
 @app.route('/api/status/<upload_id>', methods=['GET'])
@@ -140,9 +141,21 @@ def cancel(upload_id):
     if upload_id not in upload_processes:
         return jsonify({"error": "Upload ID not found"}), 404
 
+    # Update the status to cancelled
     upload_processes[upload_id]["status"] = "cancelled"
-    # In a real implementation, you would also need to signal the blob_uploader
-    # to stop the upload process
+
+    # Clean up temp files if they still exist
+    if "file_paths" in upload_processes[upload_id]:
+        for path in upload_processes[upload_id]["file_paths"]:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {path}: {str(e)}")
+
+    # Add cancel signal to the process record
+    # (blob_uploader should check this flag)
+    upload_processes[upload_id]["cancelled"] = True
 
     return jsonify({"status": "cancelled"})
 
