@@ -1,3 +1,11 @@
+#######################################################
+# Flask application that facilitates file uploads to Azure Blob Storage.
+# It includes several routes to handle the main functionalities:
+# rendering the main page, serving static files, uploading files,
+# checking upload status, and canceling uploads.
+#######################################################
+
+
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import threading
 import subprocess
@@ -7,6 +15,7 @@ import tempfile
 import uuid
 import logging
 
+# Initialize Flask app
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
@@ -18,16 +27,22 @@ logger = logging.getLogger(__name__)
 upload_processes = {}
 
 
+# The index route renders the main HTML page using the render_template function.
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
+# The send_static route serves static files from the 'static' directory.
 @app.route('/static/<path:path>')
 def send_static(path):
     return send_from_directory('static', path)
 
 
+# The upload route handles file uploads.
+# It retrieves form data, including the connection string, container name, and access tier.
+# It then processes the uploaded files, saving them to a temporary directory
+# and preparing them for upload to Azure Blob Storage:
 @app.route('/api/upload', methods=['POST'])
 def upload():
     # Get form data
@@ -41,6 +56,10 @@ def upload():
         return jsonify({"error": "Missing required parameters"}), 400
 
     # Generate unique ID for this upload process
+    # Each file is saved to a temporary location,
+    # and its path is stored in a list.
+    # The upload process is tracked using a unique ID,
+    # and the upload is performed in a separate thread:
     upload_id = str(uuid.uuid4())
     upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], upload_id)
 
@@ -90,6 +109,9 @@ def upload():
     return jsonify({"upload_id": upload_id})
 
 
+# The run_uploader function is responsible for running the upload process in a separate thread.
+# It uses the subprocess module to call an external script (blob_uploader.py)
+# that handles the actual upload to Azure Blob Storage:
 def run_uploader(upload_id, input_data):
     try:
         # Run blob_uploader.py as a subprocess
@@ -128,6 +150,8 @@ def run_uploader(upload_id, input_data):
                 logger.warning(f"Failed to clean up temporary file {path}: {str(e)}")
 
 
+# The status route allows clients to check the status of an ongoing upload by
+# querying the upload_processes dictionary:
 @app.route('/api/status/<upload_id>', methods=['GET'])
 def status(upload_id):
     if upload_id not in upload_processes:
@@ -136,6 +160,9 @@ def status(upload_id):
     return jsonify(upload_processes[upload_id])
 
 
+# The cancel route allows clients to cancel an ongoing upload.
+# It updates the status of the upload process to "cancelled" and
+# attempts to clean up any temporary files:
 @app.route('/api/cancel/<upload_id>', methods=['POST'])
 def cancel(upload_id):
     if upload_id not in upload_processes:
