@@ -120,10 +120,10 @@ def run_uploader(upload_id, input_data):
         upload_processes[upload_id]["results"] = {"error": str(e)}
     finally:
         # Clean up temporary files
-        # Clean up temporary files
         for path in input_data["file_paths"]:
             try:
-                os.remove(path)
+                if os.path.exists(path) and os.path.abspath(path).startswith(os.path.abspath(app.config['UPLOAD_FOLDER'])):
+                    os.remove(path)
             except Exception as e:
                 logger.warning(f"Failed to clean up temporary file {path}: {str(e)}")
 
@@ -148,8 +148,10 @@ def cancel(upload_id):
     if "file_paths" in upload_processes[upload_id]:
         for path in upload_processes[upload_id]["file_paths"]:
             try:
-                if os.path.exists(path):
-                    os.remove(path)
+                if os.path.exists(path) and os.path.abspath(path).startswith(os.path.abspath(app.config['UPLOAD_FOLDER'])):
+                    # Additional validation to ensure we're only deleting files we created
+                    if upload_id in path:  # Make sure the path contains our upload_id
+                        os.remove(path)
             except Exception as e:
                 logger.warning(f"Failed to clean up temporary file {path}: {str(e)}")
 
@@ -161,4 +163,4 @@ def cancel(upload_id):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

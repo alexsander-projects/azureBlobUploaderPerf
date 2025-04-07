@@ -41,9 +41,6 @@
             cursor: pointer;
             margin-right: 10px;
         }
-        .btn-secondary {
-            background-color: #6c757d;
-        }
         .btn-danger {
             background-color: #dc3545;
         }
@@ -61,7 +58,7 @@
         .progress-bar {
             height: 100%;
             background-color: #0078d4;
-            width: 0%;
+            width: 0;
             transition: width 0.3s;
         }
         .file-list {
@@ -71,10 +68,6 @@
             min-height: 50px;
             padding: 10px;
             background-color: #f9f9f9;
-        }
-        .file-item {
-            padding: 5px;
-            border-bottom: 1px solid #eee;
         }
         #results {
             margin-top: 20px;
@@ -169,13 +162,13 @@
 
         // File selection handling
         document.getElementById('fileInput').addEventListener('change', (event) => {
-            selectedFiles = Array.from(event.target.files);
+            selectedFiles = Array.from(event.target.files || []);
             processFiles();
             updateFileList();
         });
 
         document.getElementById('folderInput').addEventListener('change', (event) => {
-            selectedFiles = Array.from(event.target.files);
+            selectedFiles = Array.from(event.target.files || []);
             processFiles();
             updateFileList();
         });
@@ -419,11 +412,11 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}`);
                 }
 
                 const data = await response.json();
-                currentUploadId = data.upload_id;
+                currentUploadId = data.upload_id || null;
 
                 // Start polling for status
                 startStatusPolling();
@@ -470,7 +463,7 @@
             try {
                 const response = await fetch(`/api/status/${currentUploadId}`);
                 if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}`);
                 }
 
                 const status = await response.json();
@@ -493,9 +486,9 @@
                     stopStatusPolling();
 
                     if (status.status === 'completed') {
-                        showResults(status.results);
+                        showResults(status.results || {});
                     } else {
-                        const errorMessage = status.results?.error || `Upload ${status.status}`;
+                        const errorMessage = status.results || {}?.error || `Upload ${status.status}`;
                         showError(errorMessage);
                     }
 
